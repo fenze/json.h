@@ -1,0 +1,132 @@
+json.h
+======
+
+A lightweight, single-header JSON library for C.
+
+Features
+--------
+- No external dependencies.
+- Simple API for parsing and generating JSON.
+- Minimal memory overhead, easy to embed in any project.
+
+Usage
+-----
+Include `json.h` in your project and start working with JSON data.
+
+Supported Types
+---------------
+Library supports all JSON types:
+- object
+- array
+- string
+- number
+- boolean
+- null
+
+All types are represented by a `json_value` struct.
+
+Decoding/Encoding
+------------------
+/* Parse JSON string into a tree. */
+json_decode(char *) -> json_value *
+
+/* Serialize a JSON tree into a string. */
+json_encode(json_value *) -> char *
+
+Constructors
+------------
+json_object_new() -> json_value *
+json_array_new() -> json_value *
+json_string_new(const char *) -> json_value *
+json_number_new(double) -> json_value *
+json_boolean_new(bool) -> json_value *
+json_null_new() -> json_value *
+
+Memory Management
+-----------------
+/* Free any JSON value, without freeing its children. */
+json_free(json_value *) -> void
+
+/* Free array only, freeing its children. */
+json_array_free(json_value *) -> void
+
+/* Free object only, freeing its children. */
+json_object_free(json_value *) -> void
+
+Setters
+-------
+json_object_set(json_value *, const char *, json_value *) -> void
+json_array_set(json_value *, size_t, json_value *) -> void
+json_string_set(json_value *, const char *) -> void
+json_boolean_set(json_value *, bool) -> void
+json_number_set(json_value *, double) -> void
+
+Getters
+-------
+json_object_get(json_value *, const char *) -> json_value *
+json_array_get(json_value *, size_t) -> json_value *
+json_string_get(json_value *) -> const char *
+json_boolean_get(json_value *) -> bool
+json_number_get(json_value *) -> double
+
+Iterators
+---------
+/* Walk through objects and arrays */
+json_object_iter(json_value *, size_t *iter, char **key, json_value **) -> int
+json_array_iter(json_value *, size_t *iter, json_value **) -> int
+
+Debugging (Optional)
+--------------------
+/* Enable printing using #define JSON_PRINT */
+#ifdef JSON_PRINT
+json_print(json_value *) -> void
+json_println(json_value *) -> void
+#endif
+
+Utilities
+---------
+json_is_object(json_value *) -> bool
+json_is_array(json_value *) -> bool
+json_is_string(json_value *) -> bool
+json_is_number(json_value *) -> bool
+json_is_boolean(json_value *) -> bool
+json_is_null(json_value *) -> bool
+
+Object API
+----------
+json_object_new() -> json_value *
+json_object_set(json_value *, const char *, json_value *) -> void
+json_object_get(json_value *, const char *) -> json_value *
+json_object_has(json_value *, const char *) -> int
+json_object_count(json_value *) -> size_t
+json_object_remove(json_value *, const char *) -> void
+json_object_clear(json_value *) -> void
+
+Array API
+---------
+json_array_new() -> json_value *
+json_array_set(json_value *, size_t, json_value *) -> void
+json_array_get(json_value *, size_t) -> json_value *
+json_array_push(json_value *, json_value *) -> void
+json_array_count(json_value *) -> size_t
+json_array_remove(json_value *, size_t) -> void
+json_array_clear(json_value *) -> void
+
+Dynamic Memory Management
+-------------------------
+/* Initial capacity for arrays */
+#define JSON_ARRAY_INITIAL_CAPACITY 1
+
+/* Capacity multiplier for arrays (doubles with each resize) */
+#define JSON_ARRAY_CAPACITY_MULTIPLIER 2
+
+/* Initial capacity for objects */
+#define JSON_OBJECT_INITIAL_CAPACITY 1
+
+/* Capacity multiplier for object (doubles with each resize) */
+#define JSON_OBJECT_CAPACITY_MULTIPLIER 2
+
+LICENSE
+-------
+This software is licensed under the MIT License.
+See LICENSE for details.
