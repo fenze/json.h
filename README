@@ -80,7 +80,6 @@ Custom allocator override:
 #define JSON_ALLOC(size)         my_malloc(size)
 #define JSON_REALLOC(ptr, size)  my_realloc(ptr, size)
 #define JSON_FREE(ptr)           my_free(ptr)
-#define JSON_STRDUP(str)         my_strdup(str)
 
 Object API
 ----------

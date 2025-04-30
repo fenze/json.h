@@ -54,21 +54,6 @@
 # define json_realloc(ptr, size) realloc(ptr, size)
 #endif
 
-#ifdef JSON_STRDUP
-/**
- * Duplicates a string for JSON operations.
- *
- * If `JSON_STRDUP` is defined, it uses the custom string duplication function
- * provided by the user. Otherwise, it defaults to the standard `strdup`.
- *
- * @param str A pointer to the null-terminated string to duplicate.
- * @return A pointer to the duplicated string, or NULL if duplication fails.
- */
-# define json_strdup(str) JSON_STRDUP(str)
-#else
-# define json_strdup(str) strdup(str)
-#endif
-
 #ifdef JSON_FREE
 /**
  * Frees memory allocated for JSON operations.
