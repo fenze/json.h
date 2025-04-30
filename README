@@ -82,13 +82,6 @@ Custom allocator override:
 #define JSON_FREE(ptr)           my_free(ptr)
 #define JSON_STRDUP(str)         my_strdup(str)
 
-Iteration API
--------------
-Walk through objects and arrays.
-
-json_object_iter(struct json_value *, int *iter, char **key, struct json_value **) -> int
-json_array_iter(struct json_value *, int *iter, struct json_value **) -> int
-
 Object API
 ----------
 json_object_new() -> struct json_value *
@@ -97,6 +90,7 @@ json_object_get(struct json_value *, const char *) -> struct json_value *
 json_object_has(struct json_value *, const char *) -> int
 json_object_remove(struct json_value *, const char *) -> void
 json_object_clear(struct json_value *) -> void
+json_object_iter(struct json_value *, int *iter, char **key, struct json_value **) -> int
 
 Object Macros
 -------------
@@ -111,6 +105,7 @@ json_array_get(struct json_value *, int) -> struct json_value *
 json_array_push(struct json_value *, struct json_value *) -> void
 json_array_remove(struct json_value *, int) -> void
 json_array_clear(struct json_value *) -> void
+json_array_iter(struct json_value *, int *iter, struct json_value **) -> int
 
 Array Macros
 ------------
