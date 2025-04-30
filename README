@@ -146,14 +146,6 @@ Null Macros
 json_is_null(struct json_value *) -> bool
 json_null_new(struct json_value *) -> struct json_value *
 
-Printing
---------
-The `json_print(struct json_value *)` and `json_println(struct json_value *)` functions are designed for
-pretty-printing JSON data, primarily for debugging purposes. These functions provide a
-human-readable representation of JSON structures, making it easier to inspect and verify
-data during development. While not intended for production use, they are highly useful for
-troubleshooting and understanding the structure of JSON objects and arrays.
-
 Dynamic Memory Management
 -------------------------
 /* Default initial capacity for arrays (released upon first push) */
