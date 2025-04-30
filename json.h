@@ -78,17 +78,16 @@ extern "C" {
 #define JSON_TYPE_ARRAY   5
 #define JSON_TYPE_OBJECT  6
 
-#define json_is_null(VALUE)    ((VALUE) && (VALUE)->type == JSON_TYPE_NULL)
-#define json_is_boolean(VALUE) ((VALUE) && (VALUE)->type == JSON_TYPE_BOOLEAN)
-#define json_is_number(VALUE)  ((VALUE) && (VALUE)->type == JSON_TYPE_NUMBER)
-#define json_is_string(VALUE)  ((VALUE) && (VALUE)->type == JSON_TYPE_STRING)
 #define json_is_array(VALUE)   ((VALUE) && (VALUE)->type == JSON_TYPE_ARRAY)
+#define json_is_boolean(VALUE) ((VALUE) && (VALUE)->type == JSON_TYPE_BOOLEAN)
+#define json_is_null(VALUE)    ((VALUE) && (VALUE)->type == JSON_TYPE_NULL)
+#define json_is_number(VALUE)  ((VALUE) && (VALUE)->type == JSON_TYPE_NUMBER)
 #define json_is_object(VALUE)  ((VALUE) && (VALUE)->type == JSON_TYPE_OBJECT)
+#define json_is_string(VALUE)  ((VALUE) && (VALUE)->type == JSON_TYPE_STRING)
 
 struct json_value
 {
-    unsigned short type;
-    unsigned short flags;
+    int type;
 
     union
     {
@@ -554,12 +553,30 @@ static void json_free(void *ptr)
         JSON_DEBUG("json_free(NULL)");
     }
 }
+#endif
 
+#ifdef JSON_ALLOC
+# define json_alloc(size) JSON_ALLOC(size)
 #else
-# define json_alloc(size)        malloc(size)
+# define json_alloc(size) malloc(size)
+#endif
+
+#ifdef JSON_REALLOC
+# define json_realloc(ptr, size) JSON_REALLOC(ptr, size)
+#else
 # define json_realloc(ptr, size) realloc(ptr, size)
-# define json_free(ptr)          free(ptr)
-# define json_strdup(str)        strdup(str)
+#endif
+
+#ifdef JSON_STRDUP
+# define json_strdup(str) JSON_STRDUP(str)
+#else
+# define json_strdup(str) strdup(str)
+#endif
+
+#ifdef JSON_FREE
+# define json_free(ptr) JSON_FREE(ptr)
+#else
+# define json_free(ptr) free(ptr)
 #endif
 
 #if defined(JSON_ERROR)
@@ -988,10 +1005,14 @@ struct json_value *json_decode(const char *json)
     }
 
     if (json__decode_value(&parser, value) != 0) {
-#if defined(JSON_ERROR)
+#if defined(JSON_ERROR) && !defined(JSON_ERROR_HANDLER)
         if (parser.error.code != JSON_ERROR_NONE) {
             fprintf(stderr, "JSON(\033[1merror\033[m): %s:%d %s\n",
                     parser.error.func, parser.error.line, parser.error.message);
+        }
+#elif defined(JSON_ERROR) && defined(JSON_ERROR_HANDLER)
+        if (parser.error.code != JSON_ERROR_NONE) {
+            JSON_ERROR_HANDLER(CODE, MESSAGE)
         }
 #endif
         json_free(value);
@@ -1253,7 +1274,6 @@ void json_object_free(struct json_value *object)
     size_t iter = 0;
     struct json_value *value;
 
-    JSON_DEBUG("FREE %p", object);
     while (json_object_iter(object, &iter, &key, &value)) {
         json_object_remove(object, key);
         iter--;
@@ -1315,7 +1335,6 @@ struct json_value *json_object_get(struct json_value *object, const char *key)
 
 int json_object_remove(struct json_value *object, const char *key)
 {
-    JSON_DEBUG("REMOVE .key=%s", key);
     for (size_t i = 0; i < object->object.n_items; i++) {
         if (strcmp(object->object.items[i]->key, key) == 0) {
             switch (object->object.items[i]->value->type) {
@@ -1368,7 +1387,6 @@ void json_object_clear(struct json_value *object)
     size_t iter = 0;
     struct json_value *value;
 
-    JSON_DEBUG("CLEAR %p", object);
     while (json_object_iter(object, &iter, &key, &value)) {
         json_object_remove(object, key);
         iter--;
@@ -1548,7 +1566,6 @@ void json_array_clear(struct json_value *array)
     size_t iter = 0;
     struct json_value *value;
 
-    JSON_DEBUG("CLEAR %p", array);
     while (json_array_iter(array, &iter, &value)) {
         json_array_remove(array, iter);
         iter--;
@@ -1654,8 +1671,6 @@ void json_string_set(struct json_value *string, const char *value)
 
 void json_string_free(struct json_value *string)
 {
-    JSON_DEBUG("FREE string=%p .cap=%zu .len=%zu", string,
-               string->string.capacity, string->string.length);
     json_free(string->string.value);
     json_free(string);
 }

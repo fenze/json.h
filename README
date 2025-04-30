@@ -5,9 +5,10 @@ A lightweight, single-header JSON library for C.
 
 Features
 --------
+- Single-header, header-only design — easy to integrate.
 - No external dependencies.
-- Simple API for parsing and generating JSON.
-- Minimal memory overhead, easy to embed in any project.
+- Simple, intuitive API for working with all JSON types.
+- Minimal memory overhead, suitable for embedded or constrained environments.
 
 Usage
 -----
@@ -23,108 +24,233 @@ Library supports all JSON types:
 - boolean
 - null
 
-All types are represented by a `json_value` struct.
+All types are represented by a `struct json_value` struct.
 
-Decoding/Encoding
-------------------
+Parsing and Serialization
+-------------------------
 /* Parse JSON string into a tree. */
-json_decode(char *) -> json_value *
+json_decode(const char *) -> struct json_value *
 
 /* Serialize a JSON tree into a string. */
-json_encode(json_value *) -> char *
-
-Constructors
-------------
-json_object_new() -> json_value *
-json_array_new() -> json_value *
-json_string_new(const char *) -> json_value *
-json_number_new(double) -> json_value *
-json_boolean_new(bool) -> json_value *
-json_null_new() -> json_value *
+json_encode(struct json_value *) -> char *
 
 Memory Management
 -----------------
-/* Free any JSON value, without freeing its children. */
-json_free(json_value *) -> void
+The `json_free(struct json_value *value)` function is designed to free only the
+`struct json_value` structure itself, **without recursively freeing any of its child
+elements**. This gives the user full control over memory management and is
+especially useful in advanced or performance-sensitive contexts where you
+may want to manage memory reuse, deferred cleanup, or partial deallocation.
 
-/* Free array only, freeing its children. */
-json_array_free(json_value *) -> void
+In contrast, the following specialized functions free the internal
+structures of composite types:
 
-/* Free object only, freeing its children. */
-json_object_free(json_value *) -> void
+- `json_array_free(struct json_value *array)`:
+    Frees the array and recursively frees all of its elements.
 
-Setters
--------
-json_object_set(json_value *, const char *, json_value *) -> void
-json_array_set(json_value *, size_t, json_value *) -> void
-json_string_set(json_value *, const char *) -> void
-json_boolean_set(json_value *, bool) -> void
-json_number_set(json_value *, double) -> void
+- `json_object_free(struct json_value *object)`:
+    Frees the object and recursively frees all key-value pairs.
 
-Getters
--------
-json_object_get(json_value *, const char *) -> json_value *
-json_array_get(json_value *, size_t) -> json_value *
-json_string_get(json_value *) -> const char *
-json_boolean_get(json_value *) -> bool
-json_number_get(json_value *) -> double
+- `json_string_free(struct json_value *string)`:
+    Frees the string content and the `struct json_value` itself.
 
-Iterators
----------
-/* Walk through objects and arrays */
-json_object_iter(json_value *, size_t *iter, char **key, json_value **) -> int
-json_array_iter(json_value *, size_t *iter, json_value **) -> int
+NOTE:
+These functions assume ownership of the content they free.
+If your program shares ownership or manually manages memory for items
+inside arrays, objects, or strings (e.g., for string interning, object pooling,
+or custom allocators), use `json_free()` to avoid double-free or invalid access.
 
-Debugging (Optional)
---------------------
-/* Enable printing using #define JSON_PRINT */
-#ifdef JSON_PRINT
-json_print(json_value *) -> void
-json_println(json_value *) -> void
-#endif
+/* Free json value, freeing its children */
+json_array_free(struct json_value *) -> void
 
-Utilities
----------
-json_is_object(json_value *) -> bool
-json_is_array(json_value *) -> bool
-json_is_string(json_value *) -> bool
-json_is_number(json_value *) -> bool
-json_is_boolean(json_value *) -> bool
-json_is_null(json_value *) -> bool
+/* Free json value, freeing its children */
+json_object_free(struct json_value *) -> void
+
+/* Free json value and string structure */
+json_string_free(struct json_value *) -> void
+
+/* Free only the json value, without freeing its children */
+json_free(struct json_value *) -> void
+
+IMPORTANT:
+Some utility functions in this library may automatically allocate, reallocate,
+or free memory (e.g., when resizing arrays or adding items to objects).
+These behaviors are designed for convenience but may not be suitable for
+applications requiring strict memory control.
+
+TWEAK:
+If you need more control over memory management (e.g., custom allocators,
+arena allocation, or memory pooling), this library supports overriding the default
+memory allocation functions used throughout the JSON system. By defining the macros listed below
+before including the JSON implementation (or via compiler flags), users can inject custom memory
+allocators to better suit their application’s performance, debugging, or platform-specific needs.
+
+Custom allocator override:
+#define JSON_ALLOC(size)         my_malloc(size)
+#define JSON_REALLOC(ptr, size)  my_realloc(ptr, size)
+#define JSON_FREE(ptr)           my_free(ptr)
+#define JSON_STRDUP(str)         my_strdup(str)
+
+Iteration API
+-------------
+Walk through objects and arrays.
+
+json_object_iter(struct json_value *, size_t *iter, char **key, struct json_value **) -> int
+json_array_iter(struct json_value *, size_t *iter, struct json_value **) -> int
+
+Type Checking
+-------------
+json_is_object(struct json_value *) -> bool
+json_is_array(struct json_value *) -> bool
+json_is_string(struct json_value *) -> bool
+json_is_number(struct json_value *) -> bool
+json_is_boolean(struct json_value *) -> bool
+json_is_null(struct json_value *) -> bool
 
 Object API
 ----------
-json_object_new() -> json_value *
-json_object_set(json_value *, const char *, json_value *) -> void
-json_object_get(json_value *, const char *) -> json_value *
-json_object_has(json_value *, const char *) -> int
-json_object_count(json_value *) -> size_t
-json_object_remove(json_value *, const char *) -> void
-json_object_clear(json_value *) -> void
+json_object_new() -> struct json_value *
+json_object_set(struct json_value *, const char *, struct json_value *) -> void
+json_object_get(struct json_value *, const char *) -> struct json_value *
+json_object_has(struct json_value *, const char *) -> int
+json_object_count(struct json_value *) -> size_t
+json_object_remove(struct json_value *, const char *) -> void
+json_object_clear(struct json_value *) -> void
 
 Array API
 ---------
-json_array_new() -> json_value *
-json_array_set(json_value *, size_t, json_value *) -> void
-json_array_get(json_value *, size_t) -> json_value *
-json_array_push(json_value *, json_value *) -> void
-json_array_count(json_value *) -> size_t
-json_array_remove(json_value *, size_t) -> void
-json_array_clear(json_value *) -> void
+json_array_new() -> struct json_value *
+json_array_set(struct json_value *, size_t, struct json_value *) -> void
+json_array_get(struct json_value *, size_t) -> struct json_value *
+json_array_push(struct json_value *, struct json_value *) -> void
+json_array_count(struct json_value *) -> size_t
+json_array_remove(struct json_value *, size_t) -> void
+json_array_clear(struct json_value *) -> void
+
+String API
+----------
+json_string_new(const char *) -> struct json_value *
+json_string_set(struct json_value *, const char *) -> void
+json_string_get(struct json_value *) -> const char *
+
+Number API
+----------
+json_number_new(double) -> struct json_value *
+json_number_set(struct json_value *, double) -> void
+json_number_get(struct json_value *) -> double
+
+Boolean API
+-----------
+json_boolean_new(bool) -> struct json_value *
+json_boolean_set(struct json_value *, bool) -> void
+json_boolean_get(struct json_value *) -> bool
+
+Printing
+--------
+The `json_print(struct json_value *)` and `json_println(struct json_value *)` functions are designed for
+pretty-printing JSON data, primarily for debugging purposes. These functions provide a
+human-readable representation of JSON structures, making it easier to inspect and verify
+data during development. While not intended for production use, they are highly useful for
+troubleshooting and understanding the structure of JSON objects and arrays.
 
 Dynamic Memory Management
 -------------------------
-/* Initial capacity for arrays */
+/* Default initial capacity for arrays (released upon first push) */
 #define JSON_ARRAY_INITIAL_CAPACITY 1
 
-/* Capacity multiplier for arrays (doubles with each resize) */
+/* Growth factor for array capacity (doubles during resizing for now, triggered when the array is full).
+Future updates may adjust this to reallocate when 60% of capacity is utilized. */
 #define JSON_ARRAY_CAPACITY_MULTIPLIER 2
 
-/* Initial capacity for objects */
+/* Threshold for array capacity (triggered when the array is full).
+Future updates may adjust this to reallocate when 60% of capacity is utilized. */
+#define JSON_ARRAY_CAPACITY_THRESHOLD 0.6 // NOT IMPLEMENTED YET!
+
+/* Default initial capacity for objects (released upon first push) */
 #define JSON_OBJECT_INITIAL_CAPACITY 1
 
-/* Capacity multiplier for object (doubles with each resize) */
+/* Growth factor for object capacity, currently doubles during resizing, but future
+updates may adjust this to trigger reallocation when 60% of capacity is utilized. */
 #define JSON_OBJECT_CAPACITY_MULTIPLIER 2
+
+/* Threshold for object capacity (triggered when the object is full).
+Future updates may adjust this to reallocate when 60% of capacity is utilized. */
+#define JSON_OBJECT_CAPACITY_THRESHOLD 0.6 // NOT IMPLEMENTED YET!
+
+Error Handling
+--------------
+In the event that `json_decode()` fails, the library automatically releases all associated memory
+allocations and returns NULL. Error handling can be customized through the following mechanisms:
+- Enable built-in error messages by defining `JSON_ERROR`.
+- Define a custom error handler by using `JSON_ERROR_HANDLER(CODE, MESSAGE)`.
+
+
+Debbugging and Additional Information
+--------------------------------------
+Defining `JSON_VERBOSE` and `JSON_ALLOC` (which overrides the default memory management functions)
+enables detailed tracking of memory allocations and deallocations. Enabling these options also activates
+the `json_memdump()` function, which provides comprehensive insights into memory usage and allocation patterns.
+The `json_print()` function utilizes the '%g' format specifier for improved readability when printing numbers,
+while the `json_encode()` function employs the '%.17g' format specifier to ensure greater precision. Direct usage
+of internal `json__*` functions is strongly discouraged unless you have a thorough understanding of their
+implementation. Additionally, the library is not thread-safe.
+
+Embedding
+---------
+To work with JSON values, declare your root or intermediate node as:
+struct json_value *value;
+
+Based on the type stored in value->type, the corresponding data is accessed as follows:
+- JSON_TYPE_NULL
+  * Represents a null value. No additional data is stored.
+
+- JSON_TYPE_BOOLEAN and JSON_TYPE_NUMBER
+  * Access the numeric or boolean data via: `value->number`
+
+- JSON_TYPE_STRING
+  * Access the string data via: `value->string`
+    Structure definition:
+    struct {
+        size_t capacity;  // Allocated size of the string buffer.
+        size_t length;    // Length of the string (excluding null terminator).
+        char *value;      // Pointer to the actual string data.
+    }
+
+- JSON_TYPE_ARRAY
+  * Access the array via: `value->array`
+    Structure definition:
+    struct {
+        size_t capacity;              // Allocated size of the array (number of elements).
+        size_t length;                // Current number of elements in the array.
+        struct json_value **values;   // Pointer to an array of `json_value*`.
+    }
+
+- JSON_TYPE_OBJECT
+  * Access the object via: `value->object`
+    Structure definition:
+    struct {
+        size_t capacity;  // Allocated size for key-value pairs.
+        size_t n_items;   // Current number of key-value pairs.
+        struct {
+            char *key;                 // Pointer to the key string.
+            struct json_value *value; // Pointer to the associated value.
+        } **items;                    // Array of key-value pair pointers.
+    }
+
+NOTE:
+To initialize a json_value as an object or array with default values, use the following helper functions:
+json_object_init(json_value *value);
+json_array_init(json_value *value);
+
+These functions configure internal capacity and structure, preparing the value
+for further manipulation (e.g., insertion of elements or key-value pairs).
+
+TODO
+----
+- Develop custom implementations for functions such as `strlen()`, `strcmp()`, `strtod`, `strcpy()`, `memcpy()`, and `memmove()`.
+  * Objective: Enhance performance and minimize reliance on standard system libraries (libc).
+- Implement JSON_OBJECT_CAPACITY_THRESHOLD and JSON_ARRAY_CAPACITY_THRESHOLD logic to dynamically adjust capacity based on usage patterns.
+- Design and integrate comprehensive tests and performance benchmarks to ensure robustness and efficiency.
 
 LICENSE
 -------
