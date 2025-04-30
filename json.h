@@ -412,6 +412,16 @@ struct json_value
 #define json_array_count(array) ((array)->array.length)
 
 /**
+ * @brief Checks if a JSON value is null.
+ *
+ * This macro determines whether a given JSON value is of type null.
+ *
+ * @param value The JSON value to check.
+ * @return Non-zero if the value is null, 0 otherwise.
+ */
+#define json_null_new(value) ((value)->type == JSON_TYPE_NULL)
+
+/**
  * @brief Encodes a JSON value into a JSON string.
  *
  * This function takes a structured `json_value` and converts it into

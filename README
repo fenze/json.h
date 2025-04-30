@@ -48,7 +48,6 @@ structures of composite types:
 - `json_string_free(struct json_value *string)`:
     Frees the string content and the `struct json_value` itself.
 
-NOTE:
 These functions assume ownership of the content they free.
 If your program shares ownership or manually manages memory for items
 inside arrays, objects, or strings (e.g., for string interning, object pooling,
@@ -66,13 +65,11 @@ json_string_free(struct json_value *) -> void
 /* Free only the json value, without freeing its children */
 json_free(struct json_value *) -> void
 
-IMPORTANT:
 Some utility functions in this library may automatically allocate, reallocate,
 or free memory (e.g., when resizing arrays or adding items to objects).
 These behaviors are designed for convenience but may not be suitable for
 applications requiring strict memory control.
 
-TWEAK:
 If you need more control over memory management (e.g., custom allocators,
 arena allocation, or memory pooling), this library supports overriding the default
 memory allocation functions used throughout the JSON system. By defining the macros listed below
@@ -89,17 +86,8 @@ Iteration API
 -------------
 Walk through objects and arrays.
 
-json_object_iter(struct json_value *, size_t *iter, char **key, struct json_value **) -> int
-json_array_iter(struct json_value *, size_t *iter, struct json_value **) -> int
-
-Type Checking
--------------
-json_is_object(struct json_value *) -> bool
-json_is_array(struct json_value *) -> bool
-json_is_string(struct json_value *) -> bool
-json_is_number(struct json_value *) -> bool
-json_is_boolean(struct json_value *) -> bool
-json_is_null(struct json_value *) -> bool
+json_object_iter(struct json_value *, int *iter, char **key, struct json_value **) -> int
+json_array_iter(struct json_value *, int *iter, struct json_value **) -> int
 
 Object API
 ----------
@@ -107,37 +95,56 @@ json_object_new() -> struct json_value *
 json_object_set(struct json_value *, const char *, struct json_value *) -> void
 json_object_get(struct json_value *, const char *) -> struct json_value *
 json_object_has(struct json_value *, const char *) -> int
-json_object_count(struct json_value *) -> size_t
 json_object_remove(struct json_value *, const char *) -> void
 json_object_clear(struct json_value *) -> void
+
+Object Macros
+-------------
+json_is_object(struct json_value *) -> bool
+json_object_count(struct json_value *) -> int
 
 Array API
 ---------
 json_array_new() -> struct json_value *
-json_array_set(struct json_value *, size_t, struct json_value *) -> void
-json_array_get(struct json_value *, size_t) -> struct json_value *
+json_array_set(struct json_value *, int, struct json_value *) -> void
+json_array_get(struct json_value *, int) -> struct json_value *
 json_array_push(struct json_value *, struct json_value *) -> void
-json_array_count(struct json_value *) -> size_t
-json_array_remove(struct json_value *, size_t) -> void
+json_array_remove(struct json_value *, int) -> void
 json_array_clear(struct json_value *) -> void
+
+Array Macros
+------------
+json_is_array(struct json_value *) -> bool
+json_array_count(struct json_value *) -> int
 
 String API
 ----------
 json_string_new(const char *) -> struct json_value *
+
+String Macros
+-------------
+json_is_string(struct json_value *) -> bool
 json_string_set(struct json_value *, const char *) -> void
 json_string_get(struct json_value *) -> const char *
 
-Number API
-----------
+Number Macros
+-------------
+json_is_number(struct json_value *) -> bool
 json_number_new(double) -> struct json_value *
 json_number_set(struct json_value *, double) -> void
 json_number_get(struct json_value *) -> double
 
-Boolean API
------------
+Boolean Macros
+--------------
+json_is_boolean(struct json_value *) -> bool
 json_boolean_new(bool) -> struct json_value *
 json_boolean_set(struct json_value *, bool) -> void
 json_boolean_get(struct json_value *) -> bool
+
+Null Macros
+-----------
+json_is_null(struct json_value *) -> bool
+json_null_new(struct json_value *) -> struct json_value *
 
 Printing
 --------
@@ -194,8 +201,8 @@ Based on the type stored in value->type, the corresponding data is accessed as f
   * Access the string data via: `value->string`
     Structure definition:
     struct {
-        size_t capacity;  // Allocated size of the string buffer.
-        size_t length;    // Length of the string (excluding null terminator).
+        int capacity;  // Allocated size of the string buffer.
+        int length;    // Length of the string (excluding null terminator).
         char *value;      // Pointer to the actual string data.
     }
 
@@ -203,8 +210,8 @@ Based on the type stored in value->type, the corresponding data is accessed as f
   * Access the array via: `value->array`
     Structure definition:
     struct {
-        size_t capacity;              // Allocated size of the array (number of elements).
-        size_t length;                // Current number of elements in the array.
+        int capacity;              // Allocated size of the array (number of elements).
+        int length;                // Current number of elements in the array.
         struct json_value **values;   // Pointer to an array of `json_value*`.
     }
 
@@ -212,8 +219,8 @@ Based on the type stored in value->type, the corresponding data is accessed as f
   * Access the object via: `value->object`
     Structure definition:
     struct {
-        size_t capacity;  // Allocated size for key-value pairs.
-        size_t n_items;   // Current number of key-value pairs.
+        int capacity;  // Allocated size for key-value pairs.
+        int n_items;   // Current number of key-value pairs.
         struct {
             char *key;                 // Pointer to the key string.
             struct json_value *value;  // Pointer to the associated value.
