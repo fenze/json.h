@@ -6,12 +6,81 @@
 #ifndef JSON_H
 #define JSON_H
 
-#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #if defined(JSON_STATIC)
+/**
+ * Defines the linkage of JSON API functions.
+ *
+ * If `JSON_STATIC` is defined, the functions are declared as `static`,
+ * meaning they are only visible within the translation unit where they
+ * are defined. Otherwise, they are declared as `extern`, making them
+ * visible across translation units.
+ */
 # define JSON_API static
 #else
 # define JSON_API extern
+#endif
+
+#ifdef JSON_ALLOC
+/**
+ * Allocates memory for JSON operations.
+ *
+ * If `JSON_ALLOC` is defined, it uses the custom allocation function
+ * provided by the user. Otherwise, it defaults to the standard `malloc`.
+ *
+ * @param size The size of memory to allocate in bytes.
+ * @return A pointer to the allocated memory, or NULL if allocation fails.
+ */
+# define json_alloc(size) JSON_ALLOC(size)
+#else
+# define json_alloc(size) malloc(size)
+#endif
+
+#ifdef JSON_REALLOC
+/**
+ * Reallocates memory for JSON operations.
+ *
+ * If `JSON_REALLOC` is defined, it uses the custom reallocation function
+ * provided by the user. Otherwise, it defaults to the standard `realloc`.
+ *
+ * @param ptr A pointer to the previously allocated memory.
+ * @param size The new size of memory to allocate in bytes.
+ * @return A pointer to the reallocated memory, or NULL if reallocation fails.
+ */
+# define json_realloc(ptr, size) JSON_REALLOC(ptr, size)
+#else
+# define json_realloc(ptr, size) realloc(ptr, size)
+#endif
+
+#ifdef JSON_STRDUP
+/**
+ * Duplicates a string for JSON operations.
+ *
+ * If `JSON_STRDUP` is defined, it uses the custom string duplication function
+ * provided by the user. Otherwise, it defaults to the standard `strdup`.
+ *
+ * @param str A pointer to the null-terminated string to duplicate.
+ * @return A pointer to the duplicated string, or NULL if duplication fails.
+ */
+# define json_strdup(str) JSON_STRDUP(str)
+#else
+# define json_strdup(str) strdup(str)
+#endif
+
+#ifdef JSON_FREE
+/**
+ * Frees memory allocated for JSON operations.
+ *
+ * If `JSON_FREE` is defined, it uses the custom free function provided by
+ * the user. Otherwise, it defaults to the standard `free`.
+ *
+ * @param ptr A pointer to the memory to free.
+ */
+# define json_free(ptr) JSON_FREE(ptr)
+#else
+# define json_free(ptr) free(ptr)
 #endif
 
 #ifdef __cplusplus
@@ -64,50 +133,85 @@ extern "C" {
 # define JSON_OBJECT_CAPACITY_MULTIPLIER 2
 #endif
 
-/**
- * JSON type definitions.
- *
- * These constants represent the various types of JSON values
- * that can be parsed or constructed using this library. Each
- * type is assigned a unique bit flag for efficient type checking.
- */
-#define JSON_TYPE_NULL    1
-#define JSON_TYPE_BOOLEAN 2
-#define JSON_TYPE_NUMBER  3
-#define JSON_TYPE_STRING  4
-#define JSON_TYPE_ARRAY   5
-#define JSON_TYPE_OBJECT  6
-
-#define json_is_array(VALUE)   ((VALUE) && (VALUE)->type == JSON_TYPE_ARRAY)
-#define json_is_boolean(VALUE) ((VALUE) && (VALUE)->type == JSON_TYPE_BOOLEAN)
-#define json_is_null(VALUE)    ((VALUE) && (VALUE)->type == JSON_TYPE_NULL)
-#define json_is_number(VALUE)  ((VALUE) && (VALUE)->type == JSON_TYPE_NUMBER)
-#define json_is_object(VALUE)  ((VALUE) && (VALUE)->type == JSON_TYPE_OBJECT)
-#define json_is_string(VALUE)  ((VALUE) && (VALUE)->type == JSON_TYPE_STRING)
-
 struct json_value
 {
-    int type;
+    /**
+     * Enum representing the type of the JSON value.
+     *
+     * - JSON_TYPE_NULL: Represents a null value.
+     * - JSON_TYPE_BOOLEAN: Represents a boolean value (true/false).
+     * - JSON_TYPE_NUMBER: Represents a numeric value.
+     * - JSON_TYPE_STRING: Represents a string value.
+     * - JSON_TYPE_ARRAY: Represents an array of JSON values.
+     * - JSON_TYPE_OBJECT: Represents an object with key-value pairs.
+     */
+    enum
+    {
+        JSON_TYPE_NULL,
+        JSON_TYPE_BOOLEAN,
+        JSON_TYPE_NUMBER,
+        JSON_TYPE_STRING,
+        JSON_TYPE_ARRAY,
+        JSON_TYPE_OBJECT
+    } type;
 
+    /**
+     * Union holding the actual data of the JSON value.
+     * The type of data stored depends on the `type` field.
+     */
     union
     {
+        /**
+         * Holds a numeric value when `type` is JSON_TYPE_NUMBER.
+         */
         double number;
+
+        /**
+         * Holds an array of JSON values when `type` is JSON_TYPE_ARRAY.
+         *
+         * - `capacity`: The total allocated capacity of the array.
+         * - `length`: The current number of elements in the array.
+         * - `items`: A pointer to an array of pointers to `json_value`
+         * elements.
+         */
         struct
         {
-            size_t capacity;
-            size_t length;
+            int capacity;
+            int length;
             struct json_value **items;
         } array;
+
+        /**
+         * Holds a string value when `type` is JSON_TYPE_STRING.
+         *
+         * - `capacity`: The total allocated capacity of the string.
+         * - `length`: The current length of the string (excluding null
+         * terminator).
+         * - `value`: A pointer to the null-terminated string.
+         */
         struct
         {
-            size_t capacity;
-            size_t length;
+            int capacity;
+            int length;
             char *value;
         } string;
+
+        /**
+         * Holds an object with key-value pairs when `type` is JSON_TYPE_OBJECT.
+         *
+         * - `capacity`: The total allocated capacity for key-value pairs.
+         * - `n_items`: The current number of key-value pairs in the object.
+         * - `items`: A pointer to an array of pointers to key-value pair
+         * structures. Each key-value pair consists of:
+         *     - `key`: A pointer to a null-terminated string representing the
+         * key.
+         *     - `value`: A pointer to a `json_value` representing the
+         * associated value.
+         */
         struct
         {
-            size_t capacity;
-            size_t n_items;
+            int capacity;
+            int n_items;
             struct
             {
                 char *key;
@@ -116,6 +220,110 @@ struct json_value
         } object;
     };
 };
+
+/**
+ * Checks if a JSON value is an array.
+ *
+ * @param VALUE The JSON value to check.
+ * @return Non-zero if the value is an array, 0 otherwise.
+ */
+#define json_is_array(VALUE) ((VALUE) && (VALUE)->type == JSON_TYPE_ARRAY)
+
+/**
+ * Checks if a JSON value is a boolean.
+ *
+ * @param VALUE The JSON value to check.
+ * @return Non-zero if the value is a boolean, 0 otherwise.
+ */
+#define json_is_boolean(VALUE) ((VALUE) && (VALUE)->type == JSON_TYPE_BOOLEAN)
+
+/**
+ * Checks if a JSON value is null.
+ *
+ * @param VALUE The JSON value to check.
+ * @return Non-zero if the value is null, 0 otherwise.
+ */
+#define json_is_null(VALUE) ((VALUE) && (VALUE)->type == JSON_TYPE_NULL)
+
+/**
+ * Checks if a JSON value is a number.
+ *
+ * @param VALUE The JSON value to check.
+ * @return Non-zero if the value is a number, 0 otherwise.
+ */
+#define json_is_number(VALUE) ((VALUE) && (VALUE)->type == JSON_TYPE_NUMBER)
+
+/**
+ * Checks if a JSON value is an object.
+ *
+ * @param VALUE The JSON value to check.
+ * @return Non-zero if the value is an object, 0 otherwise.
+ */
+#define json_is_object(VALUE) ((VALUE) && (VALUE)->type == JSON_TYPE_OBJECT)
+
+/**
+ * Checks if a JSON value is a string.
+ *
+ * @param VALUE The JSON value to check.
+ * @return Non-zero if the value is a string, 0 otherwise.
+ */
+#define json_is_string(VALUE) ((VALUE) && (VALUE)->type == JSON_TYPE_STRING)
+
+/**
+ * Retrieves the boolean value from a JSON boolean.
+ *
+ * @param boolean The JSON boolean value to retrieve.
+ * @return Non-zero if the boolean is true, 0 if false.
+ */
+#define json_boolean_get(boolean) ((boolean)->number != 0.0)
+
+/**
+ * Sets the boolean value of a JSON boolean.
+ *
+ * @param boolean The JSON boolean value to modify.
+ * @param value The new boolean value to set (non-zero for true, 0 for false).
+ */
+#define json_boolean_set(boolean, value) ((boolean)->number = value)
+
+/**
+ * Retrieves the numeric value from a JSON number.
+ *
+ * @param number The JSON number value to retrieve.
+ * @return The numeric value.
+ */
+#define json_number_get(number) ((number)->number)
+
+/**
+ * Sets the numeric value of a JSON number.
+ *
+ * @param number The JSON number value to modify.
+ * @param value The new numeric value to set.
+ */
+#define json_number_set(number, value) ((number)->number = value)
+
+/**
+ * Retrieves the string value from a JSON string.
+ *
+ * @param string The JSON string value to retrieve.
+ * @return A pointer to the string value.
+ */
+#define json_string_get(string) ((string)->string.value)
+
+/**
+ * Sets the string value of a JSON string.
+ *
+ * @param string The JSON string value to modify.
+ * @param value The new string value to set.
+ */
+#define json_string_set(string, value) ((string)->string.value = value)
+
+/**
+ * Retrieves the number of key-value pairs in a JSON object.
+ *
+ * @param object A pointer to the JSON object to query.
+ * @return The total count of key-value pairs in the object.
+ */
+#define json_object_count(object) ((object)->object.n_items)
 
 /**
  * Encodes a JSON value into a JSON string.
@@ -186,14 +394,6 @@ JSON_API int json_object_set(struct json_value *object, const char *key,
 JSON_API int json_object_has(struct json_value *object, const char *key);
 
 /**
- * Counts the number of key-value pairs in a JSON object.
- *
- * @param object The JSON object to query.
- * @return The number of key-value pairs in the object.
- */
-JSON_API size_t json_object_count(struct json_value *object);
-
-/**
  * Removes a key-value pair from a JSON object.
  *
  * @param object The JSON object to modify.
@@ -211,7 +411,7 @@ JSON_API int json_object_remove(struct json_value *object, const char *key);
  * @param value A pointer to store the current value.
  * @return 1 if there are more items to iterate, 0 otherwise.
  */
-JSON_API int json_object_iter(const struct json_value *object, size_t *iter,
+JSON_API int json_object_iter(const struct json_value *object, int *iter,
                               char **key, struct json_value **value);
 
 /**
@@ -222,7 +422,7 @@ JSON_API int json_object_iter(const struct json_value *object, size_t *iter,
  * @param value The value to set.
  * @return 0 on success, or -1 on failure.
  */
-JSON_API int json_array_set(struct json_value *array, size_t index,
+JSON_API int json_array_set(struct json_value *array, int index,
                             struct json_value *value);
 
 /**
@@ -270,8 +470,7 @@ JSON_API void json_string_free(struct json_value *string);
  * @param index The index to retrieve the value from.
  * @return A pointer to the value, or NULL if the index is out of bounds.
  */
-JSON_API struct json_value *json_array_get(struct json_value *array,
-                                           size_t index);
+JSON_API struct json_value *json_array_get(struct json_value *array, int index);
 
 /**
  * Removes a value at a specific index in a JSON array.
@@ -280,7 +479,7 @@ JSON_API struct json_value *json_array_get(struct json_value *array,
  * @param index The index to remove the value from.
  * @return 0 on success, or -1 on failure.
  */
-JSON_API int json_array_remove(struct json_value *array, size_t index);
+JSON_API int json_array_remove(struct json_value *array, int index);
 
 /**
  * Retrieves the length of a JSON array.
@@ -288,7 +487,7 @@ JSON_API int json_array_remove(struct json_value *array, size_t index);
  * @param array The JSON array to query.
  * @return The number of elements in the array.
  */
-JSON_API size_t json_array_length(struct json_value *array);
+JSON_API int json_array_length(struct json_value *array);
 
 /**
  * Iterates over the elements in a JSON array.
@@ -298,7 +497,7 @@ JSON_API size_t json_array_length(struct json_value *array);
  * @param value A pointer to store the current value.
  * @return 1 on success, or 0 if the iteration is complete.
  */
-JSON_API int json_array_iter(struct json_value *array, size_t *index,
+JSON_API int json_array_iter(struct json_value *array, int *index,
                              struct json_value **value);
 
 /**
@@ -310,44 +509,12 @@ JSON_API int json_array_iter(struct json_value *array, size_t *index,
 JSON_API struct json_value *json_string_new(const char *value);
 
 /**
- * Sets the value of a JSON string.
- *
- * @param string The JSON string to modify.
- * @param value The new string value to set.
- */
-JSON_API void json_string_set(struct json_value *string, const char *value);
-
-/**
- * Retrieves the string value from a JSON string.
- *
- * @param string The JSON string to query.
- * @return A pointer to the string value.
- */
-JSON_API char *json_string_get(struct json_value *string);
-
-/**
  * Creates a new JSON number with the specified value.
  *
  * @param value The numeric value to initialize the JSON number with.
  * @return A pointer to the newly created JSON number, or NULL on failure.
  */
 JSON_API struct json_value *json_number_new(double value);
-
-/**
- * Sets the numeric value of a JSON number.
- *
- * @param number The JSON number to modify.
- * @param value The new numeric value to set.
- */
-JSON_API void json_number_set(struct json_value *number, double value);
-
-/**
- * Retrieves the numeric value from a JSON number.
- *
- * @param number The JSON number to query.
- * @return The numeric value.
- */
-JSON_API double json_number_get(struct json_value *number);
 
 /**
  * Creates a new JSON boolean with the specified value.
@@ -357,31 +524,13 @@ JSON_API double json_number_get(struct json_value *number);
  */
 JSON_API struct json_value *json_boolean_new(int value);
 
-/**
- * Sets the boolean value of a JSON boolean.
- *
- * @param boolean The JSON boolean to modify.
- * @param value The new boolean value to set.
- */
-JSON_API void json_boolean_set(struct json_value *boolean, int value);
-
-/**
- * Retrieves the boolean value from a JSON boolean.
- *
- * @param boolean The JSON boolean to query.
- * @return The boolean value.
- */
-JSON_API int json_boolean_get(struct json_value *boolean);
-
 /* PRIVATE */
-
-#include <stdio.h>
 
 struct json_parser
 {
     const char *input;
-    size_t length;
-    size_t position;
+    int length;
+    int position;
 #if defined(JSON_ERROR)
     struct
     {
@@ -412,7 +561,7 @@ struct json_parser
  * @note This function is marked as privative and should not be used
  *       directly outside of the JSON library's internal implementation.
  */
-JSON_API void json__object_init(struct json_value *object);
+JSON_API void json_object_init(struct json_value *object);
 
 /**
  * Decodes a JSON value from a parser.
@@ -424,161 +573,6 @@ JSON_API void json__object_init(struct json_value *object);
 JSON_API int json__decode_value(struct json_parser *parser,
                                 struct json_value *value);
 
-#include <stdlib.h>
-#include <string.h>
-
-#if defined(JSON_ALLOC)
-static int random_alloc_fail = 0;
-static int random_alloc_fail_odd = 3;
-
-static uintptr_t all_allocations = 0;
-static uintptr_t all_memory = 0;
-static uintptr_t total_memory = 0;
-static uintptr_t total_allocations = 0;
-#endif
-
-#if defined(JSON_VERBOSE)
-# include <assert.h>
-# include <stdarg.h>
-# include <stdio.h>
-
-void json_debug(const char *file, const char *func, int line,
-                const char *format, ...)
-{
-    int n;
-    va_list args;
-    va_start(args, format);
-
-    n = printf("json(\033[1mdebug\033[m): %s:%d in %s ", file, line, func);
-    n += vprintf(format, args);
-
-# if defined(JSON_ALLOC)
-    while (120 - n > 0) {
-        putchar(' ');
-        n++;
-    }
-    printf(" [ mem: %3lu, all: %lu ]", total_memory, total_allocations);
-# endif
-
-    putchar('\n');
-    va_end(args);
-}
-
-# define JSON_DEBUG(...) json_debug(__FILE__, __func__, __LINE__, __VA_ARGS__)
-
-void json_memdump(void)
-{
-    JSON_DEBUG("Memory Dump: Total Memory Allocated = %lu bytes, Total "
-               "Allocations = %lu",
-               all_memory, all_allocations);
-}
-
-#else
-# define JSON_DEBUG(...)
-#endif
-
-#if defined(JSON_ALLOC)
-static void *json_alloc(size_t size)
-{
-    if (random_alloc_fail && rand() % random_alloc_fail_odd == 0)
-        return NULL;
-
-    void *raw_ptr = malloc(sizeof(uintptr_t) + size);
-    if (!raw_ptr)
-        return NULL;
-
-    uintptr_t *ptr = (uintptr_t *) raw_ptr;
-    *ptr = size;
-    total_memory += size;
-    all_memory += size;
-    total_allocations += 1;
-    all_allocations += 1;
-    JSON_DEBUG("alloc(%zu) => %p", size, ptr + 1);
-    return (void *) (ptr + 1);
-}
-
-static void *json_realloc(void *ptr, size_t size)
-{
-    JSON_DEBUG("realloc(%p, %zu)", ptr, size);
-
-    if (!ptr)
-        return json_alloc(size);
-
-    uintptr_t *aligned_ptr = (uintptr_t *) ptr - 1;
-    size_t old_size = *aligned_ptr;
-
-    void *new_raw_ptr = malloc(sizeof(uintptr_t) + size);
-    if (!new_raw_ptr)
-        return NULL;
-
-    uintptr_t *new_ptr = (uintptr_t *) new_raw_ptr;
-    *new_ptr = size;
-
-    memcpy((void *) (new_ptr + 1), (void *) (aligned_ptr + 1),
-           old_size < size ? old_size : size);
-
-    all_memory += size - old_size;
-    total_memory += size - old_size;
-    free(aligned_ptr);
-
-    return (void *) (new_ptr + 1);
-}
-
-static char *json_strdup(const char *str)
-{
-    if (!str)
-        return NULL;
-
-    size_t len = strlen(str);
-    char *new_str = json_alloc(len + 1);
-    if (!new_str)
-        return NULL;
-
-    JSON_DEBUG("strdup(%p) => %p (%zu bytes)", str, new_str, len + 1);
-
-    memcpy(new_str, str, len + 1);
-    return new_str;
-}
-
-static void json_free(void *ptr)
-{
-    if (ptr) {
-        JSON_DEBUG("json_free(%p)", ptr);
-        uintptr_t *aligned_ptr = ((uintptr_t *) ptr) - 1;
-        total_memory -= *aligned_ptr;
-        free(aligned_ptr);
-        total_allocations--;
-        ptr = NULL;
-    } else {
-        JSON_DEBUG("json_free(NULL)");
-    }
-}
-#endif
-
-#ifdef JSON_ALLOC
-# define json_alloc(size) JSON_ALLOC(size)
-#else
-# define json_alloc(size) malloc(size)
-#endif
-
-#ifdef JSON_REALLOC
-# define json_realloc(ptr, size) JSON_REALLOC(ptr, size)
-#else
-# define json_realloc(ptr, size) realloc(ptr, size)
-#endif
-
-#ifdef JSON_STRDUP
-# define json_strdup(str) JSON_STRDUP(str)
-#else
-# define json_strdup(str) strdup(str)
-#endif
-
-#ifdef JSON_FREE
-# define json_free(ptr) JSON_FREE(ptr)
-#else
-# define json_free(ptr) free(ptr)
-#endif
-
 #if defined(JSON_ERROR)
 # define JSON_PARSER_ERROR(PARSER, CODE, MESSAGE)                              \
      (PARSER)->error.code = (CODE);                                            \
@@ -589,11 +583,38 @@ static void json_free(void *ptr)
 # define JSON_PARSER_ERROR(PARSER, CODE, MESSAGE)
 #endif
 
+static int json__strlen(const char *str)
+{
+    int len = 0;
+    while (*str++) {
+        len++;
+    }
+    return len;
+}
+
+static int json__streq(const char *s1, const char *s2)
+{
+    if (json__strlen(s1) != json__strlen(s2)) {
+        return 0;
+    }
+
+    while (*s1 && *s1 == *s2) {
+        s1++;
+        s2++;
+    }
+
+    if (*s1 == 0 && *s2 == 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
 static void json__parse_whitespace(struct json_parser *parser)
 {
     const char *input = parser->input;
-    size_t pos = parser->position;
-    size_t len = parser->length;
+    int pos = parser->position;
+    int len = parser->length;
 
     while (pos < len
            && (input[pos] == ' ' || input[pos] == '\t' || input[pos] == '\n'
@@ -604,13 +625,13 @@ static void json__parse_whitespace(struct json_parser *parser)
     parser->position = pos;
 }
 
-static int json_decode_string(struct json_parser *parser,
-                              struct json_value *value)
+static int json__decode_string(struct json_parser *parser,
+                               struct json_value *value)
 {
-    size_t start = parser->position + 1;
-    size_t end = start;
-    size_t buffer_size = 16;
-    size_t buffer_length = 0;
+    int start = parser->position + 1;
+    int end = start;
+    int buffer_size = 16;
+    int buffer_length = 0;
     char *buffer = (char *) json_alloc(buffer_size);
 
     if (buffer == NULL) {
@@ -709,7 +730,6 @@ static int json_decode_string(struct json_parser *parser,
     return 0;
 }
 
-// Consume digits in a number
 static void json__parser_consume_digits(struct json_parser *parser)
 {
     while (parser->position < parser->length
@@ -719,19 +739,17 @@ static void json__parser_consume_digits(struct json_parser *parser)
     }
 }
 
-static int json_decode_number(struct json_parser *parser,
-                              struct json_value *value)
+static int json__decode_number(struct json_parser *parser,
+                               struct json_value *value)
 {
-    size_t start = parser->position;
+    int start = parser->position;
     char *endptr;
 
-    // Optional minus sign (no plus sign allowed in JSON)
     if (parser->position < parser->length
         && parser->input[parser->position] == '-') {
         parser->position++;
     }
 
-    // Integer part
     if (parser->position < parser->length
         && parser->input[parser->position] == '0') {
         parser->position++;
@@ -741,10 +759,9 @@ static int json_decode_number(struct json_parser *parser,
         json__parser_consume_digits(parser);
     } else {
         JSON_PARSER_ERROR(parser, JSON_ERROR_INVALID_NUMBER, "Invalid number");
-        return -1; // Invalid number
+        return -1;
     }
 
-    // Fractional part
     if (parser->position < parser->length
         && parser->input[parser->position] == '.') {
         parser->position++;
@@ -755,11 +772,10 @@ static int json_decode_number(struct json_parser *parser,
         } else {
             JSON_PARSER_ERROR(parser, JSON_ERROR_INVALID_NUMBER,
                               "Invalid number");
-            return -1; // Must be at least one digit after '.'
+            return -1;
         }
     }
 
-    // Exponent part
     if (parser->position < parser->length
         && (parser->input[parser->position] == 'e'
             || parser->input[parser->position] == 'E')) {
@@ -776,14 +792,13 @@ static int json_decode_number(struct json_parser *parser,
         } else {
             JSON_PARSER_ERROR(parser, JSON_ERROR_INVALID_NUMBER,
                               "Invalid number");
-            return -1; // Must be at least one digit after 'e' or 'E'
+            return -1;
         }
     }
 
-    // Final validation
     if (start == parser->position) {
         JSON_PARSER_ERROR(parser, JSON_ERROR_INVALID_NUMBER, "Invalid number");
-        return -1; // Nothing was parsed
+        return -1;
     }
 
     value->type = JSON_TYPE_NUMBER;
@@ -792,14 +807,14 @@ static int json_decode_number(struct json_parser *parser,
 
     if (endptr != parser->input + parser->position) {
         JSON_PARSER_ERROR(parser, JSON_ERROR_INVALID_NUMBER, "Invalid number");
-        return -1; // strtod did not consume exactly what we parsed
+        return -1;
     }
 
     return 0;
 }
 
-static int json_decode_array(struct json_parser *parser,
-                             struct json_value *array)
+static int json__decode_array(struct json_parser *parser,
+                              struct json_value *array)
 {
     if (parser->length - parser->position < 1) {
         JSON_PARSER_ERROR(parser, JSON_ERROR_EOF, "Unexpected end of input");
@@ -861,11 +876,11 @@ static int json_decode_array(struct json_parser *parser,
     return 0;
 }
 
-static int json_decode_object(struct json_parser *parser,
-                              struct json_value *object)
+static int json__decode_object(struct json_parser *parser,
+                               struct json_value *object)
 {
     object->type = JSON_TYPE_OBJECT;
-    json__object_init(object);
+    json_object_init(object);
 
     parser->position++;
     json__parse_whitespace(parser);
@@ -873,7 +888,6 @@ static int json_decode_object(struct json_parser *parser,
     while (parser->position < parser->length
            && parser->input[parser->position] != '}') {
         struct json_value key, *value;
-
         json__parse_whitespace(parser);
 
         if (parser->input[parser->position] != '"') {
@@ -881,7 +895,7 @@ static int json_decode_object(struct json_parser *parser,
             return -1;
         }
 
-        if (json_decode_string(parser, &key) != 0) {
+        if (json__decode_string(parser, &key) != 0) {
             JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX,
                               "Failed to parse string key");
             return -1;
@@ -950,27 +964,27 @@ int json__decode_value(struct json_parser *parser, struct json_value *value)
     char c = parser->input[parser->position];
 
     if (c == '"') {
-        rc = json_decode_string(parser, value);
+        rc = json__decode_string(parser, value);
     } else if (c == '[') {
-        rc = json_decode_array(parser, value);
+        rc = json__decode_array(parser, value);
     } else if (c == '{') {
-        rc = json_decode_object(parser, value);
-    } else if (!strcmp(parser->input + parser->position, "true")) {
+        rc = json__decode_object(parser, value);
+    } else if (json__streq(parser->input + parser->position, "true")) {
         value->type = JSON_TYPE_BOOLEAN;
         value->number = 1;
         parser->position += 4;
         return 0;
-    } else if (!strcmp(parser->input + parser->position, "false")) {
+    } else if (json__streq(parser->input + parser->position, "false")) {
         value->type = JSON_TYPE_BOOLEAN;
         value->number = 0;
         parser->position += 5;
         return 0;
-    } else if (!strcmp(parser->input + parser->position, "null")) {
+    } else if (json__streq(parser->input + parser->position, "null")) {
         value->type = JSON_TYPE_NULL;
         parser->position += 4;
         return 0;
     } else {
-        rc = json_decode_number(parser, value);
+        rc = json__decode_number(parser, value);
     }
 
 #if defined(JSON_ERROR)
@@ -992,7 +1006,7 @@ struct json_value *json_decode(const char *json)
     }
 
     parser.input = json;
-    parser.length = strlen(json);
+    parser.length = json__strlen(json);
     parser.position = 0;
 #if defined(JSON_ERROR)
     parser.error.code = JSON_ERROR_NONE;
@@ -1022,10 +1036,10 @@ struct json_value *json_decode(const char *json)
     return value;
 }
 
-static char *json_encode_array(struct json_value *value)
+static char *json__encode_array(struct json_value *value)
 {
-    size_t length;
-    size_t buffer_size;
+    int length;
+    int buffer_size;
     char *encoded_array;
     if (value == NULL) {
         return NULL;
@@ -1040,16 +1054,16 @@ static char *json_encode_array(struct json_value *value)
     length = 1;
     encoded_array[0] = '[';
 
-    for (size_t i = 0; i < value->array.length; i++) {
-        size_t needed;
-        size_t encoded_item_len;
+    for (int i = 0; i < value->array.length; i++) {
+        int needed;
+        int encoded_item_len;
         char *encoded_item = json_encode(value->array.items[i]);
         if (encoded_item == NULL) {
             json_free(encoded_array);
             return NULL;
         }
 
-        encoded_item_len = strlen(encoded_item);
+        encoded_item_len = json__strlen(encoded_item);
 
         needed = length + encoded_item_len + (i > 0 ? 1 : 0) + 1;
         if (needed > buffer_size) {
@@ -1067,7 +1081,9 @@ static char *json_encode_array(struct json_value *value)
             encoded_array[length++] = ',';
         }
 
-        memcpy(encoded_array + length, encoded_item, encoded_item_len);
+        for (int i = 0; i < encoded_item_len; i++)
+            encoded_array[length + i] = encoded_item[i];
+
         length += encoded_item_len;
 
         json_free(encoded_item);
@@ -1079,10 +1095,10 @@ static char *json_encode_array(struct json_value *value)
     return encoded_array;
 }
 
-static char *json_encode_object(struct json_value *object)
+static char *json__encode_object(struct json_value *object)
 {
-    size_t length;
-    size_t buffer_size = 256;
+    int length;
+    int buffer_size = 256;
     char *encoded_object = (char *) json_alloc(buffer_size);
     if (encoded_object == NULL) {
         return NULL;
@@ -1091,16 +1107,16 @@ static char *json_encode_object(struct json_value *object)
     encoded_object[0] = '{';
     length = 1;
 
-    for (size_t i = 0; i < object->object.n_items; i++) {
+    for (int i = 0; i < object->object.n_items; i++) {
         char *new_buffer;
         char *key = object->object.items[i]->key;
         char *value = json_encode(object->object.items[i]->value);
 
-        size_t key_length = strlen(key);
-        size_t value_length = strlen(value);
+        int key_length = json__strlen(key);
+        int value_length = json__strlen(value);
 
-        size_t needed = length + key_length + value_length + 4
-                      + (i < object->object.n_items - 1 ? 1 : 0);
+        int needed = length + key_length + value_length + 4
+                   + (i < object->object.n_items - 1 ? 1 : 0);
 
         if (needed > buffer_size) {
             buffer_size = needed * 2;
@@ -1114,11 +1130,15 @@ static char *json_encode_object(struct json_value *object)
         }
 
         encoded_object[length++] = '"';
-        memcpy(encoded_object + length, key, key_length);
+        for (int i = 0; i < key_length; i++)
+            encoded_object[length + i] = key[i];
+
         length += key_length;
         encoded_object[length++] = '"';
         encoded_object[length++] = ':';
-        memcpy(encoded_object + length, value, value_length);
+        for (int i = 0; i < value_length; i++)
+            encoded_object[length + i] = value[i];
+
         length += value_length;
 
         json_free(value);
@@ -1134,7 +1154,7 @@ static char *json_encode_object(struct json_value *object)
     return encoded_object;
 }
 
-char *json_encode(struct json_value *value)
+JSON_API char *json_encode(struct json_value *value)
 {
     if (value == NULL) {
         return NULL;
@@ -1142,45 +1162,78 @@ char *json_encode(struct json_value *value)
 
     switch (value->type) {
     case JSON_TYPE_STRING: {
-        size_t buffer_size = value->string.length + 3;
+        int buffer_size = value->string.length + 3;
         char *buffer = json_alloc(buffer_size);
         if (buffer == NULL) {
             return NULL;
         }
         buffer[0] = '"';
-        memcpy(buffer + 1, value->string.value, value->string.length);
+        for (int i = 0; i < value->string.length; i++)
+            buffer[1 + i] = value->string.value[i];
         buffer[value->string.length + 1] = '"';
         buffer[value->string.length + 2] = 0; // Null-terminated string
         return buffer;
     }
     case JSON_TYPE_NUMBER: {
         char buffer[32];
-        snprintf(buffer, sizeof(buffer), "%.17g", value->number);
-        return json_strdup(buffer);
+        int length = snprintf(buffer, sizeof(buffer), "%.17g", value->number);
+
+        char *ptr = json_alloc(length + 1);
+        if (ptr == NULL)
+            return NULL;
+
+        for (int i = 0; i < length; i++)
+            ptr[i] = buffer[i];
+
+        ptr[length] = '\0';
+        return ptr;
     }
-    case JSON_TYPE_BOOLEAN:
-        return json_strdup(value->number != 0.0 ? "true" : "false");
-    case JSON_TYPE_NULL:
-        return json_strdup("null");
+    case JSON_TYPE_BOOLEAN: {
+        const char *boolean_str = value->number != 0.0 ? "true" : "false";
+        int length = json__strlen(boolean_str);
+
+        char *ptr = json_alloc(length + 1);
+        if (ptr == NULL)
+            return NULL;
+
+        for (int i = 0; i < length; i++)
+            ptr[i] = boolean_str[i];
+
+        ptr[length] = '\0';
+        return ptr;
+    }
+    case JSON_TYPE_NULL: {
+        const char *null_str = "null";
+        int length = json__strlen(null_str);
+
+        char *ptr = json_alloc(length + 1);
+        if (ptr == NULL)
+            return NULL;
+
+        for (int i = 0; i < length; i++)
+            ptr[i] = null_str[i];
+
+        ptr[length] = '\0';
+        return ptr;
+    }
     case JSON_TYPE_ARRAY:
-        return json_encode_array(value);
+        return json__encode_array(value);
     case JSON_TYPE_OBJECT:
-        return json_encode_object(value);
+        return json__encode_object(value);
     default:
         return NULL;
     }
 }
 
 #if defined(JSON_PRINT)
-
-static void json_print_indent(int indent)
+static inline void json__print_indent(int indent)
 {
     for (int i = 0; i < indent; i++) {
         putchar(' ');
     }
 }
 
-static void json_print_internal(struct json_value *value, int indent)
+static void json__print_internal(struct json_value *value, int indent)
 {
     if (value == NULL) {
         printf("null");
@@ -1202,31 +1255,31 @@ static void json_print_internal(struct json_value *value, int indent)
         break;
     case JSON_TYPE_ARRAY:
         printf("[\n");
-        for (size_t i = 0; i < value->array.length; i++) {
-            json_print_indent(indent + 2);
-            json_print_internal(value->array.items[i], indent + 2);
+        for (int i = 0; i < value->array.length; i++) {
+            json__print_indent(indent + 2);
+            json__print_internal(value->array.items[i], indent + 2);
             if (i < value->array.length - 1) {
                 printf(",\n");
             } else {
                 printf("\n");
             }
         }
-        json_print_indent(indent);
+        json__print_indent(indent);
         printf("]");
         break;
     case JSON_TYPE_OBJECT:
         printf("{\n");
-        for (size_t i = 0; i < value->object.n_items; i++) {
-            json_print_indent(indent + 2);
+        for (int i = 0; i < value->object.n_items; i++) {
+            json__print_indent(indent + 2);
             printf("\"%s\": ", value->object.items[i]->key);
-            json_print_internal(value->object.items[i]->value, indent + 2);
+            json__print_internal(value->object.items[i]->value, indent + 2);
             if (i < value->object.n_items - 1) {
                 printf(",\n");
             } else {
                 printf("\n");
             }
         }
-        json_print_indent(indent);
+        json__print_indent(indent);
         printf("}");
         break;
     default:
@@ -1236,17 +1289,20 @@ static void json_print_internal(struct json_value *value, int indent)
 
 static void json_print(struct json_value *value)
 {
-    json_print_internal(value, 0);
+    json__print_internal(value, 0);
 }
 
-void json_println(struct json_value *value)
+static void json_println(struct json_value *value)
 {
     json_print(value);
     putchar('\n');
 }
+#else
+# define json_print(value)
+# define json_println(value)
 #endif
 
-void json__object_init(struct json_value *object)
+JSON_API void json_object_init(struct json_value *object)
 {
     object->object.n_items = 0;
     object->object.capacity = JSON_OBJECT_INITIAL_CAPACITY;
@@ -1263,15 +1319,15 @@ struct json_value *json_object_new(void)
     }
 
     object->type = JSON_TYPE_OBJECT;
-    json__object_init(object);
+    json_object_init(object);
 
     return object;
 }
 
-void json_object_free(struct json_value *object)
+JSON_API void json_object_free(struct json_value *object)
 {
     char *key;
-    size_t iter = 0;
+    int iter = 0;
     struct json_value *value;
 
     while (json_object_iter(object, &iter, &key, &value)) {
@@ -1283,11 +1339,11 @@ void json_object_free(struct json_value *object)
     json_free(object);
 }
 
-int json_object_set(struct json_value *object, const char *key,
-                    struct json_value *value)
+JSON_API int json_object_set(struct json_value *object, const char *key,
+                             struct json_value *value)
 {
     if (object->object.n_items == object->object.capacity) {
-        size_t new_capacity =
+        int new_capacity =
             object->object.capacity
                 ? object->object.capacity * JSON_OBJECT_CAPACITY_MULTIPLIER
                 : JSON_OBJECT_INITIAL_CAPACITY;
@@ -1300,21 +1356,27 @@ int json_object_set(struct json_value *object, const char *key,
         object->object.capacity = new_capacity;
     }
 
-    size_t idx = object->object.n_items++;
+    int idx = object->object.n_items++;
     object->object.items[idx] = json_alloc(sizeof(*object->object.items[idx]));
     if (!object->object.items[idx])
         return -1;
 
-    object->object.items[idx]->key = json_strdup(key);
+    int key_len = json__strlen(key);
+    object->object.items[idx]->key = json_alloc(key_len + 1);
+    for (int i = 0; i < key_len; i++) {
+        object->object.items[idx]->key[i] =
+            (key[i] >= 'a' && key[i] <= 'z') ? key[i] - 32 : key[i];
+    }
+    object->object.items[idx]->key[key_len] = '\0';
     object->object.items[idx]->value = value;
 
     return 0;
 }
 
-int json_object_has(struct json_value *object, const char *key)
+JSON_API int json_object_has(struct json_value *object, const char *key)
 {
-    for (size_t i = 0; i < object->object.n_items; i++) {
-        if (strcmp(object->object.items[i]->key, key) == 0) {
+    for (int i = 0; i < object->object.n_items; i++) {
+        if (json__streq(object->object.items[i]->key, key)) {
             return 1;
         }
     }
@@ -1324,8 +1386,8 @@ int json_object_has(struct json_value *object, const char *key)
 
 struct json_value *json_object_get(struct json_value *object, const char *key)
 {
-    for (size_t i = 0; i < object->object.n_items; i++) {
-        if (strcmp(object->object.items[i]->key, key) == 0) {
+    for (int i = 0; i < object->object.n_items; i++) {
+        if (json__streq(object->object.items[i]->key, key)) {
             return object->object.items[i]->value;
         }
     }
@@ -1333,10 +1395,10 @@ struct json_value *json_object_get(struct json_value *object, const char *key)
     return NULL;
 }
 
-int json_object_remove(struct json_value *object, const char *key)
+JSON_API int json_object_remove(struct json_value *object, const char *key)
 {
-    for (size_t i = 0; i < object->object.n_items; i++) {
-        if (strcmp(object->object.items[i]->key, key) == 0) {
+    for (int i = 0; i < object->object.n_items; i++) {
+        if (json__streq(object->object.items[i]->key, key)) {
             switch (object->object.items[i]->value->type) {
             case JSON_TYPE_ARRAY:
                 json_array_free(object->object.items[i]->value);
@@ -1368,8 +1430,8 @@ int json_object_remove(struct json_value *object, const char *key)
     return 0;
 }
 
-int json_object_iter(const struct json_value *object, size_t *iter, char **key,
-                     struct json_value **value)
+JSON_API int json_object_iter(const struct json_value *object, int *iter,
+                              char **key, struct json_value **value)
 {
     if (*iter >= object->object.n_items)
         return 0;
@@ -1381,10 +1443,10 @@ int json_object_iter(const struct json_value *object, size_t *iter, char **key,
     return 1;
 }
 
-void json_object_clear(struct json_value *object)
+JSON_API void json_object_clear(struct json_value *object)
 {
     char *key;
-    size_t iter = 0;
+    int iter = 0;
     struct json_value *value;
 
     while (json_object_iter(object, &iter, &key, &value)) {
@@ -1393,12 +1455,7 @@ void json_object_clear(struct json_value *object)
     }
 }
 
-size_t json_object_count(struct json_value *object)
-{
-    return object->object.n_items;
-}
-
-void json_array_init(struct json_value *array)
+JSON_API void json_array_init(struct json_value *array)
 {
     if (!array) {
         return;
@@ -1424,9 +1481,9 @@ struct json_value *json_array_new(void)
     return value;
 }
 
-void json_array_free(struct json_value *value)
+JSON_API void json_array_free(struct json_value *value)
 {
-    for (size_t i = 0; i < value->array.length; i++) {
+    for (int i = 0; i < value->array.length; i++) {
         switch (value->array.items[i]->type) {
         case JSON_TYPE_OBJECT:
             json_object_free(value->array.items[i]);
@@ -1446,18 +1503,18 @@ void json_array_free(struct json_value *value)
     json_free(value);
 }
 
-JSON_API int json_array_set(struct json_value *array, size_t index,
+JSON_API int json_array_set(struct json_value *array, int index,
                             struct json_value *value)
 {
     if (!array) {
         return -1;
     }
 
-    if ((size_t) index > array->array.length) {
+    if ((int) index > array->array.length) {
         return -1;
     }
 
-    if ((size_t) index == array->array.length) {
+    if ((int) index == array->array.length) {
         struct json_value **new_items = (struct json_value **) json_realloc(
             array->array.items,
             ++array->array.length * sizeof(struct json_value *));
@@ -1481,7 +1538,7 @@ JSON_API int json_array_set(struct json_value *array, size_t index,
     return 0;
 }
 
-int json_array_remove(struct json_value *array, size_t index)
+JSON_API int json_array_remove(struct json_value *array, int index)
 {
     if (!array || array->type != JSON_TYPE_ARRAY
         || index >= array->array.length) {
@@ -1502,14 +1559,14 @@ int json_array_remove(struct json_value *array, size_t index)
         break;
     }
 
-    memmove(&array->array.items[index], &array->array.items[index + 1],
-            (array->array.length - index - 1) * sizeof(struct json_value *));
+    for (int i = index; i < array->array.length - 1; i++)
+        array->array.items[i] = array->array.items[i + 1];
     array->array.length--;
 
     return 0;
 }
 
-struct json_value *json_array_get(struct json_value *array, size_t index)
+struct json_value *json_array_get(struct json_value *array, int index)
 {
     if (!array || array->type != JSON_TYPE_ARRAY
         || index >= array->array.length) {
@@ -1519,18 +1576,10 @@ struct json_value *json_array_get(struct json_value *array, size_t index)
     return array->array.items[index];
 }
 
-int json_array_push(struct json_value *array, struct json_value *value)
+JSON_API int json_array_push(struct json_value *array, struct json_value *value)
 {
-    if (!array || array->type != JSON_TYPE_ARRAY) {
-        return -1;
-    }
-
-    if (!value) {
-        return -1;
-    }
-
     if (array->array.length == array->array.capacity) {
-        size_t new_capacity =
+        int new_capacity =
             array->array.capacity
                 ? array->array.capacity * JSON_ARRAY_CAPACITY_MULTIPLIER
                 : JSON_ARRAY_INITIAL_CAPACITY;
@@ -1548,54 +1597,53 @@ int json_array_push(struct json_value *array, struct json_value *value)
     return 0;
 }
 
-int json_array_iter(struct json_value *array, size_t *index,
+int json_array_iter(struct json_value *array, int *index,
                     struct json_value **value)
 {
-    if (*index >= array->array.length) {
+    if (*index >= array->array.length)
         return 0;
-    }
 
-    *value = array->array.items[*index];
-    (*index)++;
-
+    *value = array->array.items[(*index)++];
     return 1;
 }
 
-void json_array_clear(struct json_value *array)
+JSON_API void json_array_clear(struct json_value *array)
 {
-    size_t iter = 0;
+    int iter = 0;
     struct json_value *value;
 
-    while (json_array_iter(array, &iter, &value)) {
-        json_array_remove(array, iter);
-        iter--;
-    }
+    while (json_array_iter(array, &iter, &value))
+        json_array_remove(array, iter--);
 }
 
-size_t json_array_length(struct json_value *array)
+JSON_API int json_array_length(struct json_value *array)
 {
     return array->array.length;
 }
 
-struct json_value *json_string_new(const char *value)
+struct json_value *json_string_new(const char *string)
 {
-    struct json_value *string =
+    struct json_value *value =
         (struct json_value *) json_alloc(sizeof(struct json_value));
-    if (!string) {
+    if (!value) {
         return NULL;
     }
 
-    string->type = JSON_TYPE_STRING;
-    string->string.length = strlen(value);
-    string->string.value = json_strdup(value);
-    if (!string->string.value) {
-        json_free(string);
+    value->type = JSON_TYPE_STRING;
+    value->string.length = json__strlen(string);
+    value->string.value = json_alloc(value->string.length + 1);
+    if (!value->string.value) {
+        json_free(value);
         return NULL;
     }
 
-    strcpy(string->string.value, value);
+    for (int i = 0; i < value->string.length; i++) {
+        value->string.value[i] =
+            (string[i] >= 'a' && string[i] <= 'z') ? string[i] - 32 : string[i];
+    }
+    value->string.value[value->string.length] = '\0';
 
-    return string;
+    return value;
 }
 
 struct json_value *json_number_new(double value)
@@ -1624,49 +1672,6 @@ struct json_value *json_boolean_new(int value)
     boolean->number = value;
 
     return boolean;
-}
-
-inline int json_boolean_get(struct json_value *boolean)
-{
-    return boolean->number != 0.0;
-}
-
-inline void json_boolean_set(struct json_value *boolean, int value)
-{
-    boolean->number = value;
-}
-
-inline double json_number_get(struct json_value *number)
-{
-    return number->number;
-}
-
-inline void json_number_set(struct json_value *number, double value)
-{
-    number->number = value;
-}
-
-inline char *json_string_get(struct json_value *string)
-{
-    return string->string.value;
-}
-
-void json_string_set(struct json_value *string, const char *value)
-{
-    size_t new_length = strlen(value);
-    if (string->string.value && string->string.capacity >= new_length + 1) {
-        string->string.length = new_length;
-        strcpy(string->string.value, value);
-    } else {
-        free(string->string.value);
-        string->string.length = new_length;
-        string->string.value = (char *) json_alloc(new_length + 1);
-        if (!string->string.value) {
-            return;
-        }
-        string->string.capacity = new_length + 1;
-        strcpy(string->string.value, value);
-    }
 }
 
 void json_string_free(struct json_value *string)
