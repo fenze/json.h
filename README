@@ -164,7 +164,7 @@ Future updates may adjust this to reallocate when 60% of capacity is utilized. *
 
 /* Threshold for array capacity (triggered when the array is full).
 Future updates may adjust this to reallocate when 60% of capacity is utilized. */
-#define JSON_ARRAY_CAPACITY_THRESHOLD 0.6 // NOT IMPLEMENTED YET!
+#define JSON_ARRAY_CAPACITY_THRESHOLD 0.6
 
 /* Default initial capacity for objects (released upon first push) */
 #define JSON_OBJECT_INITIAL_CAPACITY 1
@@ -175,7 +175,7 @@ updates may adjust this to trigger reallocation when 60% of capacity is utilized
 
 /* Threshold for object capacity (triggered when the object is full).
 Future updates may adjust this to reallocate when 60% of capacity is utilized. */
-#define JSON_OBJECT_CAPACITY_THRESHOLD 0.6 // NOT IMPLEMENTED YET!
+#define JSON_OBJECT_CAPACITY_THRESHOLD 0.6
 
 Error Handling
 --------------
