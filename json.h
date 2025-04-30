@@ -1099,13 +1099,10 @@ static int json__decode_object(struct json_parser *parser, struct json_value *ob
             return -1;
         }
 
-        json_free(key.string.value); // Free the key string as it's now
-                                     // duplicated in the object
-
+        json_free(key.string.value);
         json__parse_whitespace(parser);
-        if (parser->position < parser->length && parser->input[parser->position] == ',') {
-            parser->position++;
-        }
+        if (parser->position < parser->length)
+            parser->position++; // Skip comma or closing brace
     }
 
     if (parser->position >= parser->length || parser->input[parser->position] != '}') {
