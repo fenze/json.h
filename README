@@ -245,13 +245,6 @@ json_array_init(json_value *value);
 These functions configure internal capacity and structure, preparing the value
 for further manipulation (e.g., insertion of elements or key-value pairs).
 
-TODO
-----
-- Develop custom implementations for functions such as `strlen()`, `strcmp()`, `strtod`, `strcpy()`, `memcpy()`, and `memmove()`.
-  * Objective: Enhance performance and minimize reliance on standard system libraries (libc).
-- Implement JSON_OBJECT_CAPACITY_THRESHOLD and JSON_ARRAY_CAPACITY_THRESHOLD logic to dynamically adjust capacity based on usage patterns.
-- Design and integrate comprehensive tests and performance benchmarks to ensure robustness and efficiency.
-
 LICENSE
 -------
 This software is licensed under the MIT License.
