@@ -16,15 +16,9 @@ Include `json.h` in your project and start working with JSON data.
 
 Supported Types
 ---------------
-Library supports all JSON types:
-- object
-- array
-- string
-- number
-- boolean
-- null
+Supports JSON types: object, array, string, number, boolean, null.
 
-All types are represented by a `struct json_value` struct.
+All types use `struct json_value`.
 
 Parsing and Serialization
 -------------------------
@@ -184,17 +178,6 @@ allocations and returns NULL. Error handling can be customized through the follo
 - Enable built-in error messages by defining `JSON_ERROR`.
 - Define a custom error handler by using `JSON_ERROR_HANDLER(CODE, MESSAGE)`.
 
-
-Debbugging and Additional Information
---------------------------------------
-Defining `JSON_VERBOSE` and `JSON_ALLOC` (which overrides the default memory management functions)
-enables detailed tracking of memory allocations and deallocations. Enabling these options also activates
-the `json_memdump()` function, which provides comprehensive insights into memory usage and allocation patterns.
-The `json_print()` function utilizes the '%g' format specifier for improved readability when printing numbers,
-while the `json_encode()` function employs the '%.17g' format specifier to ensure greater precision. Direct usage
-of internal `json__*` functions is strongly discouraged unless you have a thorough understanding of their
-implementation. Additionally, the library is not thread-safe.
-
 Embedding
 ---------
 To work with JSON values, declare your root or intermediate node as:
@@ -233,12 +216,11 @@ Based on the type stored in value->type, the corresponding data is accessed as f
         size_t n_items;   // Current number of key-value pairs.
         struct {
             char *key;                 // Pointer to the key string.
-            struct json_value *value; // Pointer to the associated value.
-        } **items;                    // Array of key-value pair pointers.
+            struct json_value *value;  // Pointer to the associated value.
+        } **items;                     // Array of key-value pair pointers.
     }
 
-NOTE:
-To initialize a json_value as an object or array with default values, use the following helper functions:
+NOTE: To initialize a json_value as an object or array with default values, use the following helper functions:
 json_object_init(json_value *value);
 json_array_init(json_value *value);
 

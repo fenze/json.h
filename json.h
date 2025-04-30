@@ -1397,7 +1397,7 @@ static void json__print_internal(struct json_value *value, int indent)
         printf("\"%s\"", value->string.value);
         break;
     case JSON_TYPE_NUMBER:
-        printf("%g", value->number);
+        printf("%.17g", value->number);
         break;
     case JSON_TYPE_BOOLEAN:
         printf("%s", value->number == 0.0 ? "false" : "true");
