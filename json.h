@@ -658,6 +658,15 @@ JSON_API struct json_value *json_boolean_new(int value);
 JSON_API void json_generic_free(struct json_value *value);
 
 /**
+ * @brief Copy the whole value and all its children into a new json_value.
+ *
+ * In theory, no memory should be shared with the previous value.
+ *
+ * @param value The JSON value to deep-copy.
+ */
+JSON_API struct json_value *json_deep_copy(struct json_value *value);
+
+/**
  * @brief Represents a JSON parser for decoding JSON strings.
  *
  * This structure is used internally by the JSON library to parse
@@ -1595,6 +1604,40 @@ JSON_API void json_generic_free(struct json_value *value)
     default:
         json_free(value);
     }
+}
+
+JSON_API struct json_value *json_deep_copy(struct json_value *value)
+{
+    struct json_value *new_value;
+    struct json_value *element;
+    char *key;
+    int iter;
+
+    iter = 0;
+
+    switch (value->type) {
+    case JSON_TYPE_OBJECT:
+        new_value = json_object_new();
+        while (json_object_iter(value, &iter, &key, &element))
+            json_object_set(new_value, key, json_deep_copy(element));
+        return new_value;
+
+    case JSON_TYPE_ARRAY:
+        new_value = json_array_new();
+        while (json_array_iter(value, &iter, &element))
+            json_array_push(new_value, json_deep_copy(element));
+        return new_value;
+
+    case JSON_TYPE_STRING:
+        return json_string_new(value->string.value);
+
+    default:
+        new_value = json_alloc(sizeof(struct json_value));
+        memcpy(new_value, value, sizeof(*value));
+        return new_value;
+    }
+
+    return NULL;
 }
 
 JSON_API void json_array_remove(struct json_value *array, int index)
