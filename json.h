@@ -245,6 +245,8 @@ struct json_value
     };
 };
 
+// TODO: make these macros evaluate `VALUE` once
+
 /**
  * @brief Checks if a JSON value is an array.
  *
@@ -310,72 +312,77 @@ struct json_value
  *
  * This macro extracts the boolean value from a JSON boolean type.
  *
- * @param boolean The JSON boolean value to retrieve.
+ * @param VALUE The JSON boolean value to retrieve.
  * @return Non-zero if the boolean is true, 0 if false.
  */
-#define json_boolean_get(boolean) ((boolean)->number != 0.0)
+#define json_boolean_get(VALUE) ((VALUE)->number != 0.0)
 
 /**
  * @brief Sets the boolean value of a JSON boolean.
  *
  * This macro modifies the boolean value of a JSON boolean type.
  *
- * @param boolean The JSON boolean value to modify.
- * @param value The new boolean value to set (non-zero for true, 0 for false).
+ * @param VALUE The JSON boolean value to modify.
+ * @param STATE The new boolean value to set (non-zero for true, 0 for false).
  */
-#define json_boolean_set(boolean, value) ((boolean)->number = value)
+#define json_boolean_set(VALUE, STATE) ((VALUE)->number = STATE)
 
 /**
  * @brief Retrieves the numeric value from a JSON number.
  *
  * This macro extracts the numeric value from a JSON number type.
  *
- * @param number The JSON number value to retrieve.
+ * @param VALUE The JSON number value to retrieve.
  * @return The numeric value.
  */
-#define json_number_get(number) ((number)->number)
+#define json_number_get(VALUE) ((VALUE)->number)
 
 /**
  * @brief Sets the numeric value of a JSON number.
  *
  * This macro modifies the numeric value of a JSON number type.
  *
- * @param number The JSON number value to modify.
- * @param value The new numeric value to set.
+ * @param JSON The JSON number value to modify.
+ * @param VALUE The new numeric value to set.
  */
-#define json_number_set(number, value) ((number)->number = value)
+#define json_number_set(JSON, VALUE) ((JSON)->number = VALUE)
 
 /**
  * @brief Retrieves the string value from a JSON string.
  *
  * This macro extracts the string value from a JSON string type.
  *
- * @param string The JSON string value to retrieve.
+ * @param JSON The JSON string value to retrieve.
  * @return A pointer to the string value.
  */
-#define json_string_get(string) ((string)->string.value)
+#define json_string_get(JSON) ((JSON)->string.value)
 
 /**
  * @brief Sets the string value of a JSON string.
  *
  * This macro modifies the string value of a JSON string type.
  *
- * @param string The JSON string value to modify.
- * @param value The new string value to set.
+ * @param JSON The JSON string value to modify.
+ * @param VALUE The new string value to set.
  */
-#define json_string_set(string, value) ((string)->string.value = value)
+#define json_string_set(JSON, VALUE) ((JSON)->string.value = VALUE)
 
 /**
  * @brief Retrieves an element from a JSON array.
  *
- * This macro retrieves an element from a JSON array at the specified index.
+ * This function retrieves an element from a JSON array at the specified index.
  *
  * @param array The JSON array to retrieve from.
  * @param index The index of the element to retrieve.
  * @return A pointer to the element at the specified index, or NULL if out of
  * bounds.
  */
-#define json_array_get(array, index) ((index < array->array.length) ? array->array.items[index] : NULL)
+JSON_API struct json_value *json_array_get(struct json_value *array, int index);
+
+inline struct json_value *json_array_get(struct json_value *array, int index)
+{
+    return index < array->array.length ? array->array.items[index] : NULL;
+}
 
 /**
  * @brief Sets an element in a JSON array.
@@ -386,37 +393,27 @@ struct json_value
  * @param index The index of the element to set.
  * @param value The new value to set.
  */
-#define json_array_set(array, index, value) ((array)->array.items[index] = (value))
+#define json_array_set(ARRAY, INDEX, VALUE) ((ARRAY)->array.items[(INDEX)] = (VALUE))
 
 /**
  * @brief Retrieves the number of key-value pairs in a JSON object.
  *
  * This macro returns the total count of key-value pairs in a JSON object.
  *
- * @param object A pointer to the JSON object to query.
+ * @param OBJECT A pointer to the JSON object to query.
  * @return The total count of key-value pairs in the object.
  */
-#define json_object_count(object) ((object)->object.n_items)
+#define json_object_count(OBJECT) ((OBJECT)->object.n_items)
 
 /**
  * @brief Retrieves the number of elements in a JSON array.
  *
  * This macro returns the total count of elements in a JSON array.
  *
- * @param array A pointer to the JSON array to query.
+ * @param ARRAY A pointer to the JSON array to query.
  * @return The total count of elements in the array.
  */
-#define json_array_count(array) ((array)->array.length)
-
-/**
- * @brief Checks if a JSON value is null.
- *
- * This macro determines whether a given JSON value is of type null.
- *
- * @param value The JSON value to check.
- * @return Non-zero if the value is null, 0 otherwise.
- */
-#define json_null_new(value) ((value)->type == JSON_TYPE_NULL)
+#define json_array_count(ARRAY) ((ARRAY)->array.length)
 
 /**
  * @brief Encodes a JSON value into a JSON string.
@@ -1621,7 +1618,13 @@ JSON_API void json_array_remove(struct json_value *array, int index)
     array->array.length--;
 }
 
-JSON_API int json_array_push(struct json_value *array, struct json_value *value)
+JSON_API inline int json_array_length(struct json_value *array)
+{
+    return array->array.length;
+}
+
+JSON_API
+int json_array_push(struct json_value *array, struct json_value *value)
 {
     int index = array->array.length;
     int capacity = array->array.capacity;
