@@ -442,6 +442,17 @@ JSON_API char *json_encode(struct json_value *value);
 JSON_API struct json_value *json_decode(const char *json);
 
 /**
+ * @brief Decodes a JSON string into a JSON value.
+ *
+ * Decodes up to `length` bytes, see `json_decode` for more.
+ *
+ * @param json The JSON-encoded string to decode.
+ * @param length The length of the string to decode.
+ * @return A pointer to the decoded `json_value`, or NULL if decoding fails.
+ */
+JSON_API struct json_value *json_decode_with_length(const char *json, int length);
+
+/**
  * @brief Creates a new JSON object.
  *
  * This function allocates and initializes a new JSON object.
@@ -797,6 +808,16 @@ static int json__streq(const char *s1, const char *s2)
     return 0;
 }
 
+static int json__streqn(const char *s1, const char *s2, int limit)
+{
+    while (*s1 && *s2 && *s1 == *s2 && limit-- > 1) {
+        s1++;
+        s2++;
+    }
+
+    return *s1 == *s2 ? 1 : 0;
+}
+
 static void json__parse_whitespace(struct json_parser *parser)
 {
     const char *ptr = parser->input;
@@ -1112,17 +1133,17 @@ static int json__decode_value(struct json_parser *parser, struct json_value *val
         rc = json__decode_array(parser, value);
     } else if (c == '{') {
         rc = json__decode_object(parser, value);
-    } else if (json__streq(parser->input + parser->position, "true")) {
+    } else if (json__streqn(parser->input + parser->position, "true", 4)) {
         value->type = JSON_TYPE_BOOLEAN;
         value->number = 1;
         parser->position += 4;
         return 0;
-    } else if (json__streq(parser->input + parser->position, "false")) {
+    } else if (json__streqn(parser->input + parser->position, "false", 4)) {
         value->type = JSON_TYPE_BOOLEAN;
         value->number = 0;
         parser->position += 5;
         return 0;
-    } else if (json__streq(parser->input + parser->position, "null")) {
+    } else if (json__streqn(parser->input + parser->position, "null", 4)) {
         value->type = JSON_TYPE_NULL;
         parser->position += 4;
         return 0;
@@ -1139,13 +1160,13 @@ static int json__decode_value(struct json_parser *parser, struct json_value *val
     return rc;
 }
 
-struct json_value *json_decode(const char *json)
+struct json_value *json_decode_with_length(const char *json, int length)
 {
     struct json_parser parser;
     struct json_value *value = NULL;
 
     parser.input = json;
-    parser.length = json__strlen(json);
+    parser.length = length;
     parser.position = 0;
 
 #if defined(JSON_ERROR)
@@ -1172,6 +1193,11 @@ struct json_value *json_decode(const char *json)
     }
 
     return value;
+}
+
+struct json_value *json_decode(const char *json)
+{
+    return json_decode_with_length(json, json__strlen(json));
 }
 
 static char *json__encode_array(struct json_value *value)
