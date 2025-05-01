@@ -1039,7 +1039,7 @@ static int json__decode_array(struct json_parser *parser, struct json_value *arr
         json_array_push(array, item);
         json__parse_whitespace(parser);
 
-        if (parser->position < parser->length) // Skip ','
+        if (parser->position < parser->length && parser->input[parser->position] == ',') // Skip ','
             parser->position++;
     }
 
@@ -1108,7 +1108,7 @@ static int json__decode_object(struct json_parser *parser, struct json_value *ob
 
         json_free(key.string.value);
         json__parse_whitespace(parser);
-        if (parser->position < parser->length)
+        if (parser->position < parser->length && parser->input[parser->position] == ',')
             parser->position++; // Skip comma or closing brace
     }
 
@@ -1388,7 +1388,7 @@ JSON_API char *json_encode(struct json_value *value)
 JSON_API void json_object_init(struct json_value *object)
 {
     object->object.n_items = 0;
-    object->object.capacity = JSON_OBJECT_INITIAL_CAPACITY;
+    object->object.capacity = 0;
     object->object.items = NULL;
 }
 
@@ -1529,7 +1529,7 @@ JSON_API void json_object_clear(struct json_value *object)
 JSON_API void json_array_init(struct json_value *array)
 {
     array->array.length = 0;
-    array->array.capacity = JSON_ARRAY_INITIAL_CAPACITY;
+    array->array.capacity = 0;
     array->array.items = NULL;
 }
 
