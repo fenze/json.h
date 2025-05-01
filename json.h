@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #if defined(JSON_STATIC)
 /**
@@ -648,6 +649,16 @@ JSON_API struct json_value *json_number_new(double value);
  * @return A pointer to the newly created JSON boolean, or NULL on failure.
  */
 JSON_API struct json_value *json_boolean_new(int value);
+
+/**
+ * @brief Frees the memory associated with the value and itself.
+ *
+ * This function releases all memory used by the value, including
+ * all children values whether its an object, string or array.
+ *
+ * @param array The JSON value to deep-free.
+ */
+JSON_API void json_generic_free(struct json_value *value);
 
 /**
  * @brief Represents a JSON parser for decoding JSON strings.
@@ -1407,13 +1418,10 @@ struct json_value *json_object_new(void)
 
 JSON_API void json_object_free(struct json_value *object)
 {
-    char *key;
-    int iter = 0;
-    struct json_value *value;
-
-    while (json_object_iter(object, &iter, &key, &value)) {
-        json_object_remove(object, key);
-        iter--;
+    for (int i = 0; i < object->object.n_items; i++) {
+        json_generic_free(object->object.items[i]->value);
+        json_free(object->object.items[i]->key);
+        json_free(object->object.items[i]);
     }
 
     json_free(object->object.items);
@@ -1438,16 +1446,24 @@ JSON_API int json_object_set(struct json_value *object, const char *key, struct 
         object->object.capacity = capacity;
     }
 
+    // If we find a matching key, only update the value.
+
+    for (int i = 0; i < object->object.n_items; i++) {
+        if (json__streq(object->object.items[i]->key, key)) {
+            json_generic_free(object->object.items[i]->value);
+            object->object.items[i]->value = value;
+            return 0;
+        }
+    }
+
     int idx = object->object.n_items++;
-    object->object.items[idx] = json_alloc(sizeof(*object->object.items[idx]));
+    object->object.items[idx] = json_alloc(sizeof(struct json_value));
     if (!object->object.items[idx])
         return -1;
 
     int key_len = json__strlen(key);
     object->object.items[idx]->key = json_alloc(key_len + 1);
-    for (int i = 0; i < key_len; i++) {
-        object->object.items[idx]->key[i] = (key[i] >= 'a' && key[i] <= 'z') ? key[i] - 32 : key[i];
-    }
+    strncpy(object->object.items[idx]->key, key, key_len);
     object->object.items[idx]->key[key_len] = '\0';
     object->object.items[idx]->value = value;
 
@@ -1565,6 +1581,23 @@ JSON_API void json_array_free(struct json_value *value)
     }
     json_free(value->array.items);
     json_free(value);
+}
+
+JSON_API void json_generic_free(struct json_value *value)
+{
+    switch (value->type) {
+    case JSON_TYPE_OBJECT:
+        json_object_free(value);
+        break;
+    case JSON_TYPE_ARRAY:
+        json_array_free(value);
+        break;
+    case JSON_TYPE_STRING:
+        json_string_free(value);
+        break;
+    default:
+        json_free(value);
+    }
 }
 
 JSON_API void json_array_remove(struct json_value *array, int index)
