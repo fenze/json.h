@@ -692,10 +692,11 @@ struct json_parser
          */
         enum
         {
-            JSON_ERROR_NONE,   /**< No error occurred. */
-            JSON_ERROR_SYNTAX, /**< A syntax error was encountered. */
-            JSON_ERROR_MEMORY, /**< A memory allocation error occurred. */
-            JSON_ERROR_EOF     /**< Unexpected end of input was encountered. */
+            JSON_ERROR_NONE,           /**< No error occurred. */
+            JSON_ERROR_SYNTAX,         /**< A syntax error was encountered. */
+            JSON_ERROR_MEMORY,         /**< A memory allocation error occurred. */
+            JSON_ERROR_EOF,            /**< Unexpected end of input was encountered. */
+            JSON_ERROR_INVALID_NUMBER, /**< Failed to parse number */
         } code;
 
         /**
@@ -1163,7 +1164,7 @@ struct json_value *json_decode(const char *json)
         }
 #elif defined(JSON_ERROR) && defined(JSON_ERROR_HANDLER)
         if (parser.error.code != JSON_ERROR_NONE) {
-            JSON_ERROR_HANDLER(CODE, MESSAGE)
+            JSON_ERROR_HANDLER(parser.error.code, parser.error.message);
         }
 #endif
         json_free(value);
