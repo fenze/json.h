@@ -64,9 +64,9 @@
  *
  * @param ptr A pointer to the memory to free.
  */
-# define json_free(ptr) JSON_FREE(ptr)
+# define json__free(ptr) JSON_FREE(ptr)
 #else
-# define json_free(ptr) free(ptr)
+# define json__free(ptr) free(ptr)
 #endif
 
 #ifdef __cplusplus
@@ -648,14 +648,15 @@ JSON_API struct json_value *json_number_new(double value);
 JSON_API struct json_value *json_boolean_new(int value);
 
 /**
- * @brief Frees the memory associated with the value and itself.
+ * @brief Deallocates memory associated with a JSON value and its descendants.
  *
- * This function releases all memory used by the value, including
- * all children values whether its an object, string or array.
+ * This function performs a comprehensive cleanup of the specified JSON value,
+ * including recursively freeing all child elements, whether they are objects,
+ * arrays, or strings. It ensures that all allocated memory is properly released.
  *
- * @param array The JSON value to deep-free.
+ * @param value A pointer to the JSON value to be deallocated.
  */
-JSON_API void json_generic_free(struct json_value *value);
+JSON_API void json_free(struct json_value *value);
 
 /**
  * @brief Copy the whole value and all its children into a new json_value.
@@ -864,61 +865,207 @@ static int json__decode_string(struct json_parser *parser, struct json_value *va
         if (parser->input[end] == '\\') {
             end++;
             if (end >= parser->length) {
-                json_free(buffer);
+                json__free(buffer);
                 JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX, "Unterminated escape sequence");
                 return -1;
             }
 
-            char escaped_char;
-            switch (parser->input[end]) {
-            case '"':
-                escaped_char = '"';
-                break;
-            case '\\':
-                escaped_char = '\\';
-                break;
-            case '/':
-                escaped_char = '/';
-                break;
-            case 'b':
-                escaped_char = '\b';
-                break;
-            case 'f':
-                escaped_char = '\f';
-                break;
-            case 'n':
-                escaped_char = '\n';
-                break;
-            case 'r':
-                escaped_char = '\r';
-                break;
-            case 't':
-                escaped_char = '\t';
-                break;
-            default:
-                json_free(buffer);
-                JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX, "Invalid escape character");
-                return -1;
-            }
-
-            if (buffer_length + 1 >= buffer_size) {
-                buffer_size *= 2;
-                char *new_buffer = (char *) json_realloc(buffer, buffer_size);
-                if (new_buffer == NULL) {
-                    json_free(buffer);
-                    JSON_PARSER_ERROR(parser, JSON_ERROR_MEMORY, "Memory allocation failed");
+            if (parser->input[end] == 'u') {
+                // Handle \uXXXX Unicode escape sequences
+                end++;
+                if (end + 3 >= parser->length) {
+                    json__free(buffer);
+                    JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX, "Incomplete Unicode escape sequence");
                     return -1;
                 }
-                buffer = new_buffer;
-            }
 
-            buffer[buffer_length++] = escaped_char;
+                // Parse 4 hex digits
+                unsigned int code_point = 0;
+                for (int i = 0; i < 4; i++) {
+                    char c = parser->input[end + i];
+                    code_point <<= 4;
+
+                    if (c >= '0' && c <= '9') {
+                        code_point |= (c - '0');
+                    } else if (c >= 'a' && c <= 'f') {
+                        code_point |= (c - 'a' + 10);
+                    } else if (c >= 'A' && c <= 'F') {
+                        code_point |= (c - 'A' + 10);
+                    } else {
+                        json__free(buffer);
+                        JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX, "Invalid hex digit in Unicode escape");
+                        return -1;
+                    }
+                }
+
+                // Check for surrogate pair
+                if (code_point >= 0xD800 && code_point <= 0xDBFF) {
+                    // High surrogate - need to get the low surrogate
+                    end += 4; // Move past the first \uXXXX
+
+                    // Check for the sequence \uYYYY where YYYY is the low surrogate
+                    if (end + 1 >= parser->length || parser->input[end] != '\\' || parser->input[end + 1] != 'u') {
+                        json__free(buffer);
+                        JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX, "Expected low surrogate after high surrogate");
+                        return -1;
+                    }
+
+                    end += 2; // Move past \u
+                    if (end + 3 >= parser->length) {
+                        json__free(buffer);
+                        JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX,
+                                          "Incomplete Unicode escape sequence for low surrogate");
+                        return -1;
+                    }
+
+                    // Parse 4 hex digits for low surrogate
+                    unsigned int low_surrogate = 0;
+                    for (int i = 0; i < 4; i++) {
+                        char c = parser->input[end + i];
+                        low_surrogate <<= 4;
+
+                        if (c >= '0' && c <= '9') {
+                            low_surrogate |= (c - '0');
+                        } else if (c >= 'a' && c <= 'f') {
+                            low_surrogate |= (c - 'a' + 10);
+                        } else if (c >= 'A' && c <= 'F') {
+                            low_surrogate |= (c - 'A' + 10);
+                        } else {
+                            json__free(buffer);
+                            JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX, "Invalid hex digit in low surrogate");
+                            return -1;
+                        }
+                    }
+
+                    // Validate low surrogate range
+                    if (low_surrogate < 0xDC00 || low_surrogate > 0xDFFF) {
+                        json__free(buffer);
+                        JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX, "Invalid low surrogate value");
+                        return -1;
+                    }
+
+                    // Combine surrogate pair to get actual code point
+                    code_point = 0x10000 + ((code_point - 0xD800) << 10) + (low_surrogate - 0xDC00);
+                    end += 4; // Move past the second \uXXXX
+                } else {
+                    end += 4; // Move past \uXXXX for non-surrogate case
+                }
+
+                // Encode code point as UTF-8
+                if (code_point < 0x80) {
+                    // 1-byte character
+                    if (buffer_length + 1 >= buffer_size) {
+                        buffer_size *= 2;
+                        char *new_buffer = (char *) json_realloc(buffer, buffer_size);
+                        if (new_buffer == NULL) {
+                            json__free(buffer);
+                            JSON_PARSER_ERROR(parser, JSON_ERROR_MEMORY, "Memory allocation failed");
+                            return -1;
+                        }
+                        buffer = new_buffer;
+                    }
+                    buffer[buffer_length++] = (char) code_point;
+                } else if (code_point < 0x800) {
+                    // 2-byte character
+                    if (buffer_length + 2 >= buffer_size) {
+                        buffer_size *= 2;
+                        char *new_buffer = (char *) json_realloc(buffer, buffer_size);
+                        if (new_buffer == NULL) {
+                            json__free(buffer);
+                            JSON_PARSER_ERROR(parser, JSON_ERROR_MEMORY, "Memory allocation failed");
+                            return -1;
+                        }
+                        buffer = new_buffer;
+                    }
+                    buffer[buffer_length++] = (char) (0xC0 | (code_point >> 6));
+                    buffer[buffer_length++] = (char) (0x80 | (code_point & 0x3F));
+                } else if (code_point < 0x10000) {
+                    // 3-byte character
+                    if (buffer_length + 3 >= buffer_size) {
+                        buffer_size *= 2;
+                        char *new_buffer = (char *) json_realloc(buffer, buffer_size);
+                        if (new_buffer == NULL) {
+                            json__free(buffer);
+                            JSON_PARSER_ERROR(parser, JSON_ERROR_MEMORY, "Memory allocation failed");
+                            return -1;
+                        }
+                        buffer = new_buffer;
+                    }
+                    buffer[buffer_length++] = (char) (0xE0 | (code_point >> 12));
+                    buffer[buffer_length++] = (char) (0x80 | ((code_point >> 6) & 0x3F));
+                    buffer[buffer_length++] = (char) (0x80 | (code_point & 0x3F));
+                } else {
+                    // 4-byte character
+                    if (buffer_length + 4 >= buffer_size) {
+                        buffer_size *= 2;
+                        char *new_buffer = (char *) json_realloc(buffer, buffer_size);
+                        if (new_buffer == NULL) {
+                            json__free(buffer);
+                            JSON_PARSER_ERROR(parser, JSON_ERROR_MEMORY, "Memory allocation failed");
+                            return -1;
+                        }
+                        buffer = new_buffer;
+                    }
+                    buffer[buffer_length++] = (char) (0xF0 | (code_point >> 18));
+                    buffer[buffer_length++] = (char) (0x80 | ((code_point >> 12) & 0x3F));
+                    buffer[buffer_length++] = (char) (0x80 | ((code_point >> 6) & 0x3F));
+                    buffer[buffer_length++] = (char) (0x80 | (code_point & 0x3F));
+                }
+
+                continue; // Skip the increment at the end of the loop
+            } else {
+                // Handle standard escape sequences
+                char escaped_char;
+                switch (parser->input[end]) {
+                case '"':
+                    escaped_char = '"';
+                    break;
+                case '\\':
+                    escaped_char = '\\';
+                    break;
+                case '/':
+                    escaped_char = '/';
+                    break;
+                case 'b':
+                    escaped_char = '\b';
+                    break;
+                case 'f':
+                    escaped_char = '\f';
+                    break;
+                case 'n':
+                    escaped_char = '\n';
+                    break;
+                case 'r':
+                    escaped_char = '\r';
+                    break;
+                case 't':
+                    escaped_char = '\t';
+                    break;
+                default:
+                    json__free(buffer);
+                    JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX, "Invalid escape character");
+                    return -1;
+                }
+
+                if (buffer_length + 1 >= buffer_size) {
+                    buffer_size *= 2;
+                    char *new_buffer = (char *) json_realloc(buffer, buffer_size);
+                    if (new_buffer == NULL) {
+                        json__free(buffer);
+                        JSON_PARSER_ERROR(parser, JSON_ERROR_MEMORY, "Memory allocation failed");
+                        return -1;
+                    }
+                    buffer = new_buffer;
+                }
+
+                buffer[buffer_length++] = escaped_char;
+            }
         } else {
             if (buffer_length + 1 >= buffer_size) {
                 buffer_size *= 2;
                 char *new_buffer = (char *) json_realloc(buffer, buffer_size);
                 if (new_buffer == NULL) {
-                    json_free(buffer);
+                    json__free(buffer);
                     JSON_PARSER_ERROR(parser, JSON_ERROR_MEMORY, "Memory allocation failed");
                     return -1;
                 }
@@ -931,7 +1078,7 @@ static int json__decode_string(struct json_parser *parser, struct json_value *va
     }
 
     if (end == parser->length) {
-        json_free(buffer);
+        json__free(buffer);
         JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX, "Unterminated string");
         return -1;
     }
@@ -1048,7 +1195,7 @@ static int json__decode_array(struct json_parser *parser, struct json_value *arr
         }
 
         if (json__decode_value(parser, item) != 0) {
-            json_free(item);
+            json__free(item);
             json_array_free(array);
             return -1;
         }
@@ -1095,7 +1242,7 @@ static int json__decode_object(struct json_parser *parser, struct json_value *ob
 
         json__parse_whitespace(parser);
         if (parser->position >= parser->length || parser->input[parser->position] != ':') {
-            json_free(key.string.value);
+            json__free(key.string.value);
             JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX, "Expected ':' after string key");
             return -1;
         }
@@ -1103,27 +1250,27 @@ static int json__decode_object(struct json_parser *parser, struct json_value *ob
 
         value = (struct json_value *) json_alloc(sizeof(struct json_value));
         if (value == NULL) {
-            json_free(key.string.value);
+            json__free(key.string.value);
             JSON_PARSER_ERROR(parser, JSON_ERROR_MEMORY, "Failed to allocate memory for JSON item");
             return -1;
         }
 
         json__parse_whitespace(parser);
         if (json__decode_value(parser, value) != 0) {
-            json_free(value);
-            json_free(key.string.value);
+            json__free(value);
+            json__free(key.string.value);
             JSON_PARSER_ERROR(parser, JSON_ERROR_SYNTAX, "Failed to parse JSON value");
             return -1;
         }
 
         if (json_object_set(object, key.string.value, value) != 0) {
-            json_free(value);
-            json_free(key.string.value);
+            json__free(value);
+            json__free(key.string.value);
             JSON_PARSER_ERROR(parser, JSON_ERROR_MEMORY, "Failed to set key-value pair in object");
             return -1;
         }
 
-        json_free(key.string.value);
+        json__free(key.string.value);
         json__parse_whitespace(parser);
         if (parser->position < parser->length && parser->input[parser->position] == ',')
             parser->position++; // Skip comma or closing brace
@@ -1205,7 +1352,7 @@ struct json_value *json_decode_with_length(const char *json, int length)
             JSON_ERROR_HANDLER(parser.error.code, parser.error.message);
         }
 #endif
-        json_free(value);
+        json__free(value);
         return NULL;
     }
 
@@ -1240,7 +1387,7 @@ static char *json__encode_array(struct json_value *value)
         int encoded_item_len;
         char *encoded_item = json_encode(value->array.items[i]);
         if (encoded_item == NULL) {
-            json_free(encoded_array);
+            json__free(encoded_array);
             return NULL;
         }
 
@@ -1250,8 +1397,8 @@ static char *json__encode_array(struct json_value *value)
         if (needed > buffer_size) {
             char *new_encoded_array = (char *) json_realloc(encoded_array, (buffer_size = needed * 2));
             if (new_encoded_array == NULL) {
-                json_free(encoded_array);
-                json_free(encoded_item);
+                json__free(encoded_array);
+                json__free(encoded_item);
                 return NULL;
             }
             encoded_array = new_encoded_array;
@@ -1266,7 +1413,7 @@ static char *json__encode_array(struct json_value *value)
 
         length += encoded_item_len;
 
-        json_free(encoded_item);
+        json__free(encoded_item);
     }
 
     encoded_array[length++] = ']';
@@ -1301,8 +1448,8 @@ static char *json__encode_object(struct json_value *object)
             buffer_size = needed * 2;
             new_buffer = (char *) json_realloc(encoded_object, buffer_size);
             if (new_buffer == NULL) {
-                json_free(encoded_object);
-                json_free(value);
+                json__free(encoded_object);
+                json__free(value);
                 return NULL;
             }
             encoded_object = new_buffer;
@@ -1320,7 +1467,7 @@ static char *json__encode_object(struct json_value *object)
 
         length += value_length;
 
-        json_free(value);
+        json__free(value);
 
         if (i < object->object.n_items - 1) {
             encoded_object[length++] = ',';
@@ -1333,24 +1480,129 @@ static char *json__encode_object(struct json_value *object)
     return encoded_object;
 }
 
+static char *json__encode_string(struct json_value *value)
+{
+    const char *str = value->string.value;
+    int length = value->string.length;
+    int buffer_size = length * 6 + 3; // Maximum possible size (all chars escaped + quotes)
+    char *buffer = (char *) json_alloc(buffer_size);
+    int pos = 0;
+
+    if (!buffer)
+        return NULL;
+
+    buffer[pos++] = '"';
+
+    for (int i = 0; i < length; i++) {
+        unsigned char c = (unsigned char) str[i];
+
+        if (c == '"' || c == '\\' || c == '/') {
+            buffer[pos++] = '\\';
+            buffer[pos++] = c;
+        } else if (c == '\b') {
+            buffer[pos++] = '\\';
+            buffer[pos++] = 'b';
+        } else if (c == '\f') {
+            buffer[pos++] = '\\';
+            buffer[pos++] = 'f';
+        } else if (c == '\n') {
+            buffer[pos++] = '\\';
+            buffer[pos++] = 'n';
+        } else if (c == '\r') {
+            buffer[pos++] = '\\';
+            buffer[pos++] = 'r';
+        } else if (c == '\t') {
+            buffer[pos++] = '\\';
+            buffer[pos++] = 't';
+        } else if (c < 32) {
+            // Control characters must be escaped as \uXXXX
+            buffer[pos++] = '\\';
+            buffer[pos++] = 'u';
+            buffer[pos++] = '0';
+            buffer[pos++] = '0';
+            buffer[pos++] = "0123456789ABCDEF"[(c >> 4) & 0xF];
+            buffer[pos++] = "0123456789ABCDEF"[c & 0xF];
+        } else if (c < 128) {
+            // ASCII characters
+            buffer[pos++] = c;
+        } else {
+            // UTF-8 encoded characters
+            // Check if this is a multi-byte sequence
+            const unsigned char *bytes = (const unsigned char *) &str[i];
+            if ((c & 0xE0) == 0xC0) {
+                // Two-byte sequence
+                if (i + 1 >= length || (bytes[i + 1] & 0xC0) != 0x80) {
+                    // Invalid UTF-8 sequence, escape as replacement character
+                    buffer[pos++] = '\\';
+                    buffer[pos++] = 'u';
+                    buffer[pos++] = 'F';
+                    buffer[pos++] = 'F';
+                    buffer[pos++] = 'F';
+                    buffer[pos++] = 'D';
+                } else {
+                    // Valid two-byte sequence, keep as is
+                    buffer[pos++] = c;
+                    buffer[pos++] = str[++i];
+                }
+            } else if ((c & 0xF0) == 0xE0) {
+                // Three-byte sequence
+                if (i + 2 >= length || (bytes[i + 1] & 0xC0) != 0x80 || (bytes[i + 2] & 0xC0) != 0x80) {
+                    // Invalid UTF-8 sequence
+                    buffer[pos++] = '\\';
+                    buffer[pos++] = 'u';
+                    buffer[pos++] = 'F';
+                    buffer[pos++] = 'F';
+                    buffer[pos++] = 'F';
+                    buffer[pos++] = 'D';
+                } else {
+                    // Valid three-byte sequence, keep as is
+                    buffer[pos++] = c;
+                    buffer[pos++] = str[++i];
+                    buffer[pos++] = str[++i];
+                }
+            } else if ((c & 0xF8) == 0xF0) {
+                // Four-byte sequence
+                if (i + 3 >= length || (bytes[i + 1] & 0xC0) != 0x80 || (bytes[i + 2] & 0xC0) != 0x80
+                    || (bytes[i + 3] & 0xC0) != 0x80) {
+                    // Invalid UTF-8 sequence
+                    buffer[pos++] = '\\';
+                    buffer[pos++] = 'u';
+                    buffer[pos++] = 'F';
+                    buffer[pos++] = 'F';
+                    buffer[pos++] = 'F';
+                    buffer[pos++] = 'D';
+                } else {
+                    // Valid four-byte sequence, keep as is
+                    buffer[pos++] = c;
+                    buffer[pos++] = str[++i];
+                    buffer[pos++] = str[++i];
+                    buffer[pos++] = str[++i];
+                }
+            } else {
+                // Invalid UTF-8 start byte
+                buffer[pos++] = '\\';
+                buffer[pos++] = 'u';
+                buffer[pos++] = 'F';
+                buffer[pos++] = 'F';
+                buffer[pos++] = 'F';
+                buffer[pos++] = 'D';
+            }
+        }
+    }
+
+    buffer[pos++] = '"';
+    buffer[pos] = '\0';
+
+    // Reallocate to actual size
+    char *result = (char *) json_realloc(buffer, pos + 1);
+    return result ? result : buffer;
+}
+
 JSON_API char *json_encode(struct json_value *value)
 {
     switch (value->type) {
-    case JSON_TYPE_STRING: {
-        char *buffer;
-        int buffer_size = value->string.length + 3;
-
-        if ((buffer = json_alloc(buffer_size)) == NULL)
-            return NULL;
-
-        buffer[0] = '"';
-        for (int i = 0; i < value->string.length; i++)
-            buffer[1 + i] = value->string.value[i];
-
-        buffer[value->string.length + 1] = '"';
-        buffer[value->string.length + 2] = 0;
-        return buffer;
-    }
+    case JSON_TYPE_STRING:
+        return json__encode_string(value);
     case JSON_TYPE_NUMBER: {
         char *ptr;
         char buffer[32];
@@ -1409,7 +1661,7 @@ JSON_API void json_object_init(struct json_value *object)
     object->object.items = NULL;
 }
 
-struct json_value *json_object_new(void)
+JSON_API struct json_value *json_object_new(void)
 {
     struct json_value *object = (struct json_value *) json_alloc(sizeof(struct json_value));
     if (!object) {
@@ -1425,13 +1677,13 @@ struct json_value *json_object_new(void)
 JSON_API void json_object_free(struct json_value *object)
 {
     for (int i = 0; i < object->object.n_items; i++) {
-        json_generic_free(object->object.items[i]->value);
-        json_free(object->object.items[i]->key);
-        json_free(object->object.items[i]);
+        json_free(object->object.items[i]->value);
+        json__free(object->object.items[i]->key);
+        json__free(object->object.items[i]);
     }
 
-    json_free(object->object.items);
-    json_free(object);
+    json__free(object->object.items);
+    json__free(object);
 }
 
 JSON_API int json_object_set(struct json_value *object, const char *key, struct json_value *value)
@@ -1452,11 +1704,9 @@ JSON_API int json_object_set(struct json_value *object, const char *key, struct 
         object->object.capacity = capacity;
     }
 
-    // If we find a matching key, only update the value.
-
     for (int i = 0; i < object->object.n_items; i++) {
         if (json__streq(object->object.items[i]->key, key)) {
-            json_generic_free(object->object.items[i]->value);
+            json_free(object->object.items[i]->value);
             object->object.items[i]->value = value;
             return 0;
         }
@@ -1485,7 +1735,7 @@ JSON_API int json_object_has(struct json_value *object, const char *key)
     return 0;
 }
 
-struct json_value *json_object_get(struct json_value *object, const char *key)
+JSON_API struct json_value *json_object_get(struct json_value *object, const char *key)
 {
     for (int i = 0; i < object->object.n_items; i++)
         if (json__streq(object->object.items[i]->key, key))
@@ -1509,12 +1759,12 @@ JSON_API void json_object_remove(struct json_value *object, const char *key)
                 json_string_free(object->object.items[i]->value);
                 break;
             default:
-                json_free(object->object.items[i]->value);
+                json__free(object->object.items[i]->value);
                 break;
             }
 
-            json_free(object->object.items[i]->key);
-            json_free(object->object.items[i]);
+            json__free(object->object.items[i]->key);
+            json__free(object->object.items[i]);
 
             if (i < object->object.n_items - 1) {
                 object->object.items[i] = object->object.items[object->object.n_items - 1];
@@ -1555,7 +1805,7 @@ JSON_API void json_array_init(struct json_value *array)
     array->array.items = NULL;
 }
 
-struct json_value *json_array_new(void)
+JSON_API struct json_value *json_array_new(void)
 {
     struct json_value *value;
     if ((value = json_alloc(sizeof(struct json_value))) == NULL)
@@ -1581,15 +1831,15 @@ JSON_API void json_array_free(struct json_value *value)
             json_string_free(value->array.items[i]);
             break;
         default:
-            json_free(value->array.items[i]);
+            json__free(value->array.items[i]);
             break;
         }
     }
-    json_free(value->array.items);
-    json_free(value);
+    json__free(value->array.items);
+    json__free(value);
 }
 
-JSON_API void json_generic_free(struct json_value *value)
+JSON_API void json_free(struct json_value *value)
 {
     switch (value->type) {
     case JSON_TYPE_OBJECT:
@@ -1602,7 +1852,7 @@ JSON_API void json_generic_free(struct json_value *value)
         json_string_free(value);
         break;
     default:
-        json_free(value);
+        json__free(value);
     }
 }
 
@@ -1693,7 +1943,7 @@ int json_array_push(struct json_value *array, struct json_value *value)
     return 0;
 }
 
-int json_array_iter(struct json_value *array, int *index, struct json_value **value)
+JSON_API int json_array_iter(struct json_value *array, int *index, struct json_value **value)
 {
     if (*index >= array->array.length)
         return 0;
@@ -1711,7 +1961,7 @@ JSON_API void json_array_clear(struct json_value *array)
         json_array_remove(array, iter--);
 }
 
-struct json_value *json_string_new(const char *string)
+JSON_API struct json_value *json_string_new(const char *string)
 {
     struct json_value *value;
     if ((value = json_alloc(sizeof(struct json_value))) == NULL)
@@ -1720,7 +1970,7 @@ struct json_value *json_string_new(const char *string)
     value->type = JSON_TYPE_STRING;
     value->string.length = json__strlen(string);
     if ((value->string.value = json_alloc(value->string.length + 1)) == NULL) {
-        json_free(value);
+        json__free(value);
         return NULL;
     }
 
@@ -1731,7 +1981,7 @@ struct json_value *json_string_new(const char *string)
     return value;
 }
 
-struct json_value *json_number_new(double value)
+JSON_API struct json_value *json_number_new(double value)
 {
     struct json_value *number;
     if ((number = json_alloc(sizeof(struct json_value))) == NULL)
@@ -1743,7 +1993,7 @@ struct json_value *json_number_new(double value)
     return number;
 }
 
-struct json_value *json_boolean_new(int value)
+JSON_API struct json_value *json_boolean_new(int value)
 {
     struct json_value *boolean;
     if ((boolean = json_alloc(sizeof(struct json_value))) == NULL)
@@ -1755,10 +2005,82 @@ struct json_value *json_boolean_new(int value)
     return boolean;
 }
 
-void json_string_free(struct json_value *string)
+JSON_API void json_string_free(struct json_value *string)
 {
-    json_free(string->string.value);
-    json_free(string);
+    json__free(string->string.value);
+    json__free(string);
+}
+
+static inline void json__print_indent(int indent)
+{
+    for (int i = 0; i < indent; i++) {
+        putchar(' ');
+    }
+}
+
+static void json__print_internal(struct json_value *value, int indent)
+{
+    if (value == NULL) {
+        printf("null");
+        return;
+    }
+
+    switch (value->type) {
+    case JSON_TYPE_STRING:
+        printf("\"%s\"", value->string.value);
+        break;
+    case JSON_TYPE_NUMBER:
+        printf("%.17g", value->number);
+        break;
+    case JSON_TYPE_BOOLEAN:
+        printf("%s", value->number == 0.0 ? "false" : "true");
+        break;
+    case JSON_TYPE_NULL:
+        printf("null");
+        break;
+    case JSON_TYPE_ARRAY:
+        printf("[\n");
+        for (int i = 0; i < value->array.length; i++) {
+            json__print_indent(indent + 2);
+            json__print_internal(value->array.items[i], indent + 2);
+            if (i < value->array.length - 1) {
+                printf(",\n");
+            } else {
+                printf("\n");
+            }
+        }
+        json__print_indent(indent);
+        printf("]");
+        break;
+    case JSON_TYPE_OBJECT:
+        printf("{\n");
+        for (int i = 0; i < value->object.n_items; i++) {
+            json__print_indent(indent + 2);
+            printf("\"%s\": ", value->object.items[i]->key);
+            json__print_internal(value->object.items[i]->value, indent + 2);
+            if (i < value->object.n_items - 1) {
+                printf(",\n");
+            } else {
+                printf("\n");
+            }
+        }
+        json__print_indent(indent);
+        printf("}");
+        break;
+    default:
+        break;
+    }
+}
+
+JSON_API void json_print(struct json_value *value)
+{
+    json__print_internal(value, 0);
+}
+
+JSON_API void json_println(struct json_value *value)
+{
+    json_print(value);
+    putchar('\n');
 }
 
 #ifdef __cplusplus

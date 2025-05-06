@@ -9,6 +9,8 @@ Features
 - No external dependencies.
 - Simple, intuitive API for working with all JSON types.
 - Minimal memory overhead, suitable for embedded or constrained environments.
+- Full UTF-8 and UTF-16 support for encoding and decoding.
+- Pretty printing for easy debugging.
 
 Usage
 -----
@@ -22,22 +24,27 @@ All types use `struct json_value`.
 
 Parsing and Serialization
 -------------------------
-/* Parse JSON string into a tree. */
+/* Parse JSON string into a tree. Supports UTF-8 and UTF-16. */
 json_decode(const char *) -> struct json_value *
 
-/* Serialize a JSON tree into a string. */
+/* Serialize a JSON tree into a string. Supports UTF-8 and UTF-16. */
 json_encode(struct json_value *) -> char *
+
+/* Print JSON to stdout with pretty formatting */
+json_print(struct json_value *) -> void
+
+/* Print JSON to stdout with pretty formatting and newline */
+json_println(struct json_value *) -> void
 
 Memory Management
 -----------------
-The `json_free(struct json_value *value)` function is designed to free only the
-`struct json_value` structure itself, **without recursively freeing any of its child
-elements**. This gives the user full control over memory management and is
-especially useful in advanced or performance-sensitive contexts where you
-may want to manage memory reuse, deferred cleanup, or partial deallocation.
+The `json_free(struct json_value *value)` function is a high-level API that recursively
+frees the entire JSON structure, including all child elements. It automatically
+handles cleanup based on the value's type, making it the recommended way to free
+JSON structures in most cases.
 
-In contrast, the following specialized functions free the internal
-structures of composite types:
+For specialized memory management needs, the following type-specific functions
+are still available:
 
 - `json_array_free(struct json_value *array)`:
     Frees the array and recursively frees all of its elements.
@@ -51,7 +58,10 @@ structures of composite types:
 These functions assume ownership of the content they free.
 If your program shares ownership or manually manages memory for items
 inside arrays, objects, or strings (e.g., for string interning, object pooling,
-or custom allocators), use `json_free()` to avoid double-free or invalid access.
+or custom allocators), you may need to implement custom memory management.
+
+/* Free json value and all its children recursively */
+json_free(struct json_value *) -> void
 
 /* Free json value, freeing its children */
 json_array_free(struct json_value *) -> void
@@ -62,9 +72,6 @@ json_object_free(struct json_value *) -> void
 /* Free json value and string structure */
 json_string_free(struct json_value *) -> void
 
-/* Free only the json value, without freeing its children */
-json_free(struct json_value *) -> void
-
 Some utility functions in this library may automatically allocate, reallocate,
 or free memory (e.g., when resizing arrays or adding items to objects).
 These behaviors are designed for convenience but may not be suitable for
@@ -74,7 +81,7 @@ If you need more control over memory management (e.g., custom allocators,
 arena allocation, or memory pooling), this library supports overriding the default
 memory allocation functions used throughout the JSON system. By defining the macros listed below
 before including the JSON implementation (or via compiler flags), users can inject custom memory
-allocators to better suit their application’s performance, debugging, or platform-specific needs.
+allocators to better suit their application's performance, debugging, or platform-specific needs.
 
 Custom allocator override:
 #define JSON_ALLOC(size)         my_malloc(size)
