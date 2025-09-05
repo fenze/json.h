@@ -355,7 +355,7 @@ struct json_value
  * @param JSON The JSON string value to retrieve.
  * @return A pointer to the string value.
  */
-#define json_string_get(JSON) ((JSON)->string.value)
+#define json_string_get(JSON) ((JSON) ? (JSON)->string.value : NULL)
 
 /**
  * @brief Sets the string value of a JSON string.
@@ -1737,13 +1737,19 @@ JSON_API int json_object_has(struct json_value *object, const char *key)
     return 0;
 }
 
-JSON_API struct json_value *json_object_get(struct json_value *object, const char *key)
+JSON_API struct json_value *json_object_get(struct json_value *object,
+                                            const char *key)
 {
-    for (int i = 0; i < object->object.n_items; i++)
-        if (json__streq(object->object.items[i]->key, key))
-            return object->object.items[i]->value;
+        if (object == NULL || object->object.items == NULL)
+                return NULL;
 
-    return NULL;
+        for (int i = 0; i < object->object.n_items; i++)
+                if (object->object.items[i] != NULL
+                    && object->object.items[i]->key != NULL
+                    && json__streq(object->object.items[i]->key, key))
+                        return object->object.items[i]->value;
+
+        return NULL;
 }
 
 JSON_API void json_object_remove(struct json_value *object, const char *key)
