@@ -1713,8 +1713,10 @@ JSON_API int json_object_set(struct json_value *object, const char *key, struct 
     }
 
     int idx = object->object.n_items++;
-    object->object.items[idx] = json_alloc(sizeof(struct json_value));
-    if (!object->object.items[idx])
+    object->object.items[idx] = 
+	    json_alloc(sizeof(*object->object.items[idx]));
+
+    if (object->object.items[idx] == NULL)
         return -1;
 
     int key_len = json__strlen(key);
