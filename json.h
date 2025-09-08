@@ -1927,6 +1927,10 @@ JSON_API inline int json_array_length(struct json_value *array)
 JSON_API
 int json_array_push(struct json_value *array, struct json_value *value)
 {
+    if (array == NULL) {
+	    return -1;
+    }
+
     int index = array->array.length;
     int capacity = array->array.capacity;
     int capacity_threshold = capacity * JSON_ARRAY_CAPACITY_THRESHOLD;
