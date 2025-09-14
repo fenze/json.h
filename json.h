@@ -1457,15 +1457,12 @@ static char *json__encode_object(struct json_value *object)
 
         encoded_object[length++] = '"';
         for (int j = 0; j < key_length; j++)
-            encoded_object[length + j] = key[j];
+            encoded_object[length++] = key[j];
 
-        length += key_length;
         encoded_object[length++] = '"';
         encoded_object[length++] = ':';
         for (int j = 0; j < value_length; j++)
-            encoded_object[length + j] = value[j];
-
-        length += value_length;
+            encoded_object[length++] = value[j];
 
         json__free(value);
 
