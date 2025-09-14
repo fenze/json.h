@@ -1456,14 +1456,14 @@ static char *json__encode_object(struct json_value *object)
         }
 
         encoded_object[length++] = '"';
-        for (int i = 0; i < key_length; i++)
-            encoded_object[length + i] = key[i];
+        for (int j = 0; j < key_length; j++)
+            encoded_object[length + j] = key[j];
 
         length += key_length;
         encoded_object[length++] = '"';
         encoded_object[length++] = ':';
-        for (int i = 0; i < value_length; i++)
-            encoded_object[length + i] = value[i];
+        for (int j = 0; j < value_length; j++)
+            encoded_object[length + j] = value[j];
 
         length += value_length;
 
@@ -1713,8 +1713,7 @@ JSON_API int json_object_set(struct json_value *object, const char *key, struct 
     }
 
     int idx = object->object.n_items++;
-    object->object.items[idx] = 
-	    json_alloc(sizeof(*object->object.items[idx]));
+    object->object.items[idx] = json_alloc(sizeof(*object->object.items[idx]));
 
     if (object->object.items[idx] == NULL)
         return -1;
@@ -1737,19 +1736,17 @@ JSON_API int json_object_has(struct json_value *object, const char *key)
     return 0;
 }
 
-JSON_API struct json_value *json_object_get(struct json_value *object,
-                                            const char *key)
+JSON_API struct json_value *json_object_get(struct json_value *object, const char *key)
 {
-        if (object == NULL || object->object.items == NULL)
-                return NULL;
-
-        for (int i = 0; i < object->object.n_items; i++)
-                if (object->object.items[i] != NULL
-                    && object->object.items[i]->key != NULL
-                    && json__streq(object->object.items[i]->key, key))
-                        return object->object.items[i]->value;
-
+    if (object == NULL || object->object.items == NULL)
         return NULL;
+
+    for (int i = 0; i < object->object.n_items; i++)
+        if (object->object.items[i] != NULL && object->object.items[i]->key != NULL
+            && json__streq(object->object.items[i]->key, key))
+            return object->object.items[i]->value;
+
+    return NULL;
 }
 
 JSON_API void json_object_remove(struct json_value *object, const char *key)
@@ -1928,7 +1925,7 @@ JSON_API
 int json_array_push(struct json_value *array, struct json_value *value)
 {
     if (array == NULL) {
-	    return -1;
+        return -1;
     }
 
     int index = array->array.length;
